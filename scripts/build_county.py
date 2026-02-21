@@ -22,9 +22,14 @@ except ImportError:
     sys.exit(1)
 
 
+def _full_title(cfg):
+    """SignalPath - County, State"""
+    return f"SignalPath \u2013 {cfg['county']['name']}, {cfg['county']['state']}"
+
+
 PLACEHOLDER_MAP = {
-    "SIGNALPATH_TITLE":          lambda cfg: cfg["app"]["title"],
-    "SIGNALPATH_SUBTITLE":       lambda cfg: cfg["app"]["subtitle"],
+    "SIGNALPATH_TITLE":          _full_title,
+    "SIGNALPATH_SUBTITLE":       lambda cfg: cfg["app"].get("subtitle", "Realtime, community-sourced, road status"),
     "SIGNALPATH_CONTACT_EMAIL":  lambda cfg: cfg["app"]["contact_email"],
     "SIGNALPATH_OWNER_NAME":     lambda cfg: cfg["app"]["owner_name"],
     "SIGNALPATH_COPYRIGHT_YEAR": lambda cfg: str(cfg["app"]["copyright_year"]),
@@ -58,8 +63,8 @@ def main():
         "pmtiles_file":         cfg["data"]["pmtiles_area_name"],
 
         # UI text
-        "title":                cfg["app"]["title"],
-        "subtitle":             cfg["app"]["subtitle"],
+        "title":                _full_title(cfg),
+        "subtitle":             cfg["app"].get("subtitle", "Realtime, community-sourced, road status"),
         "contact_email":        cfg["app"]["contact_email"],
         "county_name":          cfg["county"]["name"],
         "county_state":         cfg["county"]["state"],

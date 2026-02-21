@@ -14,8 +14,8 @@ county:
   proximity_radius_km: 80
 
 app:
-  title: "Morgan County, Tennessee Road Status"
-  subtitle: "Real-time, community-based, road condition reports for Morgan County, Tennessee"
+  # title is auto-generated as "SignalPath – {county.name}, {county.state}"
+  subtitle: "Realtime, community-sourced, road status"
   contact_email: "moco.tn.road.status@reblin.us"
   owner_name: "Phillip Reblin"
   copyright_year: "2026"

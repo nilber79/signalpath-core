@@ -86,9 +86,9 @@ def download_pbf(url: str, dest: Path, cache_file: Path) -> Path:
 
 def run_planetiler(pbf_path: Path, area_name: str, output_file: Path):
     """Run the Planetiler Docker image to convert PBF → PMTiles."""
-    # Planetiler needs the PBF in a directory it can read, and outputs to a directory
-    build_dir = pbf_path.parent
-    output_dir = output_file.parent
+    # Docker volume mounts require absolute paths — resolve() handles relative inputs
+    build_dir  = pbf_path.parent.resolve()
+    output_dir = output_file.parent.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     pbf_filename = pbf_path.name

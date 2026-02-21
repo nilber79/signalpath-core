@@ -92,6 +92,10 @@ GitHub Actions (nightly)
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+SignalPath Source Available License v1.0 — see [LICENSE](LICENSE).
+
+**Non-Commercial Use** (individuals, non-profits, government agencies for public benefit) is free.
+**Commercial Use** (SaaS, hosted services sold to third parties) requires a separate written license.
+Contact [signalpath@reblin.us](mailto:signalpath@reblin.us) for commercial licensing.
 
 Road condition data submitted by users remains the contribution of the respective submitters.

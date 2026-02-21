@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>SIGNALPATH_TITLE</title>
 
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/logo.svg">
+
     <!-- Critical: Prevent flash of Vue templates before initialization -->
     <style>
         [v-cloak] { display: none !important; }
@@ -12,7 +15,7 @@
 
     <!-- MapLibre GL CSS -->
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
-    
+
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -25,8 +28,13 @@
     <div id="app" v-cloak>
         <header class="modern-header">
             <div class="header-left">
-                <h1 class="header-title">SIGNALPATH_TITLE</h1>
-                <p class="subtitle">SIGNALPATH_SUBTITLE</p>
+                <div class="header-brand">
+                    <img src="/logo.svg" alt="SignalPath" class="header-logo" />
+                    <div class="header-text">
+                        <h1 class="header-title">SIGNALPATH_TITLE</h1>
+                        <p class="subtitle">SIGNALPATH_SUBTITLE</p>
+                    </div>
+                </div>
             </div>
 
             <nav class="header-nav">
@@ -669,9 +677,12 @@
                     <p>
                         The design, source code, and implementation of this Website and its Services are the intellectual
                         property of SIGNALPATH_OWNER_NAME and are protected by applicable copyright and intellectual property laws.
-                        All rights reserved. Unauthorized copying, reproduction, modification, distribution, public display,
-                        or any other use of any part of this Website — in whole or in part — without the express written
-                        consent of the owner is strictly prohibited.
+                        This Software is distributed under the
+                        <strong>SignalPath Source Available License v1.0</strong>, which permits Non-Commercial Use
+                        (individuals, non-profits, and government agencies for public benefit) free of charge.
+                        Commercial use — including SaaS or hosted deployments — requires a separate written license
+                        from the owner. For licensing inquiries contact
+                        <a href="mailto:signalpath@reblin.us">signalpath@reblin.us</a>.
                     </p>
                     <p>
                         Road condition data submitted by community members remains the contribution of the respective
