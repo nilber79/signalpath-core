@@ -1,0 +1,45 @@
+county:
+  name: "Morgan County"
+  state: "Tennessee"
+  # OSM relation ID — find at https://www.openstreetmap.org/relation/<id>
+  # Use the numeric ID only (NOT the 3600000000-prefixed area ID)
+  osm_relation_id: 1848193
+  # Map default center as [longitude, latitude]
+  center: [-84.6167, 36.1167]
+  # Default zoom level (integer, typically 10–12 for a county)
+  default_zoom: 11
+  # Radius (km) within which a user's GPS location is considered "local";
+  # beyond this the map flies to the county center instead of the user.
+  # 80 km ≈ 50 miles
+  proximity_radius_km: 80
+
+app:
+  title: "Morgan County, Tennessee Road Status"
+  subtitle: "Real-time, community-based, road condition reports for Morgan County, Tennessee"
+  contact_email: "moco.tn.road.status@reblin.us"
+  owner_name: "Phillip Reblin"
+  copyright_year: "2026"
+
+data:
+  # Geofabrik extract URL for your state/region (updated daily by Geofabrik)
+  geofabrik_url: "https://download.geofabrik.de/north-america/us/tennessee-latest.osm.pbf"
+  # Basename for the output .pmtiles file (also the --area flag for planetiler)
+  pmtiles_area_name: "tennessee"
+  overpass_url: "https://overpass-api.de/api/interpreter"
+  road_types:
+    - motorway
+    - trunk
+    - primary
+    - secondary
+    - tertiary
+    - unclassified
+    - residential
+    - service
+
+segments:
+  # Minimum segment length in km before an intersection is used as a split point
+  min_distance_km: 0.4
+  # Maximum segment length in km; longer segments are split into equal parts
+  max_distance_km: 3.2
+  # Douglas-Peucker simplification tolerance in degrees (~11 m at this latitude)
+  simplify_tolerance: 0.0001

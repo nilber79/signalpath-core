@@ -1,0 +1,20 @@
+# ── SignalPath Core Image ──────────────────────────────────────────────────────
+# Base image containing the web application source (no county-specific data).
+# Built on FrankenPHP which embeds PHP 8.4 into Caddy, giving us:
+#   - Static file serving (HTML, CSS, JS, PMTiles)
+#   - PHP execution (api.php, sse.php) without a separate php-fpm daemon
+#   - Caddy's built-in ACME (Let's Encrypt) for automatic TLS
+#   - A single, self-contained container
+
+FROM dunglas/frankenphp:latest-php8.4
+
+# Install pdo_sqlite (required for reports.db)
+RUN install-php-extensions pdo_sqlite
+
+# Copy app source files into the FrankenPHP public root
+COPY app/ /app/public/
+
+# Caddy / FrankenPHP server configuration
+COPY docker/Caddyfile /etc/caddy/Caddyfile
+
+EXPOSE 80 443

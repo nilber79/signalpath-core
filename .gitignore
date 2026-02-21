@@ -1,0 +1,26 @@
+# Build artifacts produced locally or by GitHub Actions
+build-output/
+
+# Cached raw Overpass/Geofabrik data (only relevant to local development)
+app/data/roads.json
+app/data/roads_optimized.json
+app/data/roads_optimized.jsonl
+app/data/reports.db
+app/data/reports.db-shm
+app/data/reports.db-wal
+app/data/merge_issues.csv
+app/tiles/
+
+# county-config.json is generated at build time — not committed
+app/county-config.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo

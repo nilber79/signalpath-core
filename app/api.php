@@ -1,0 +1,465 @@
+<?php
+ini_set('display_errors', 0);
+ini_set('memory_limit', '512M');
+set_time_limit(300);
+header('Content-Type: application/json');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type');
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    exit(0);
+}
+
+$dataDir = __DIR__ . '/data';
+$cacheFile = $dataDir . '/roads_optimized.json';
+
+if (!file_exists($dataDir)) {
+    @mkdir($dataDir, 0755, true);
+}
+
+/**
+ * Get SQLite database connection (singleton)
+ */
+function getDb() {
+    static $db = null;
+    if ($db === null) {
+        $dbPath = __DIR__ . '/data/reports.db';
+        $db = new PDO('sqlite:' . $dbPath);
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $db->exec('PRAGMA journal_mode=WAL');
+        $db->exec('PRAGMA busy_timeout=5000');
+    }
+    return $db;
+}
+
+/**
+ * Convert a database row to the report object format the frontend expects
+ */
+function rowToReport($row) {
+    return [
+        'id' => $row['id'],
+        'road_id' => (int)$row['road_id'],
+        'road_name' => $row['road_name'],
+        'segment' => $row['segment'],
+        'segment_description' => $row['segment_description'],
+        'geometry' => $row['geometry'] ? json_decode($row['geometry'], true) : null,
+        'status' => $row['status'],
+        'notes' => $row['notes'],
+        'timestamp' => $row['timestamp'],
+        'segmentIds' => $row['segment_ids'] ? json_decode($row['segment_ids'], true) : null,
+    ];
+}
+
+/**
+ * Simplify road geometry using Douglas-Peucker algorithm
+ */
+function simplifyGeometry($points, $tolerance = 0.0001) {
+    if (count($points) <= 2) {
+        return $points;
+    }
+
+    $maxDist = 0;
+    $index = 0;
+    $end = count($points) - 1;
+
+    for ($i = 1; $i < $end; $i++) {
+        $dist = perpendicularDistance($points[$i], $points[0], $points[$end]);
+        if ($dist > $maxDist) {
+            $index = $i;
+            $maxDist = $dist;
+        }
+    }
+
+    if ($maxDist > $tolerance) {
+        $recResults1 = simplifyGeometry(array_slice($points, 0, $index + 1), $tolerance);
+        $recResults2 = simplifyGeometry(array_slice($points, $index), $tolerance);
+
+        array_pop($recResults1);
+        return array_merge($recResults1, $recResults2);
+    } else {
+        return [$points[0], $points[$end]];
+    }
+}
+
+/**
+ * Calculate perpendicular distance from point to line segment
+ */
+function perpendicularDistance($point, $lineStart, $lineEnd) {
+    $dx = $lineEnd[1] - $lineStart[1];
+    $dy = $lineEnd[0] - $lineStart[0];
+
+    $mag = sqrt($dx * $dx + $dy * $dy);
+    if ($mag > 0.0) {
+        $dx /= $mag;
+        $dy /= $mag;
+    }
+
+    $pvx = $point[1] - $lineStart[1];
+    $pvy = $point[0] - $lineStart[0];
+
+    $pvdot = $dx * $pvx + $dy * $pvy;
+    $dsx = $pvdot * $dx;
+    $dsy = $pvdot * $dy;
+
+    $ax = $pvx - $dsx;
+    $ay = $pvy - $dsy;
+
+    return sqrt($ax * $ax + $ay * $ay);
+}
+
+/**
+ * Filter inappropriate content from text
+ */
+function filterInappropriateContent($text) {
+    if (empty($text)) {
+        return $text;
+    }
+
+    $badPatterns = [
+        '/\bf+[\W_]*u+[\W_]*c+[\W_]*k+/i',
+        '/\bs+[\W_]*h+[\W_]*i+[\W_]*t+/i',
+        '/\bb+[\W_]*i+[\W_]*t+[\W_]*c+[\W_]*h+/i',
+        '/\ba+[\W_]*s+[\W_]*s+[\W_]*h+[\W_]*o+[\W_]*l+[\W_]*e+/i',
+        '/\bd+[\W_]*a+[\W_]*m+[\W_]*n+/i',
+        '/\bh+[\W_]*e+[\W_]*l+[\W_]*l+/i',
+        '/\bc+[\W_]*r+[\W_]*a+[\W_]*p+/i',
+    ];
+
+    foreach ($badPatterns as $pattern) {
+        if (preg_match($pattern, $text)) {
+            throw new Exception('Please keep comments appropriate and professional');
+        }
+    }
+
+    $upperCount = preg_match_all('/[A-Z]/', $text);
+    $totalLetters = preg_match_all('/[a-zA-Z]/', $text);
+    if ($totalLetters > 10 && $upperCount / $totalLetters > 0.7) {
+        throw new Exception('Please avoid excessive use of capital letters');
+    }
+
+    return trim($text);
+}
+
+/**
+ * Classify road type based on tags
+ */
+function classifyRoadType($tags) {
+    if (isset($tags['highway'])) {
+        $highway = $tags['highway'];
+
+        $majorTypes = ['motorway', 'trunk', 'primary'];
+        $secondaryTypes = ['secondary', 'tertiary'];
+        $minorTypes = ['unclassified', 'residential', 'service'];
+
+        if (in_array($highway, $majorTypes)) return 'major';
+        if (in_array($highway, $secondaryTypes)) return 'secondary';
+        if (in_array($highway, $minorTypes)) return 'minor';
+    }
+
+    return 'other';
+}
+
+$action = $_GET['action'] ?? null;
+$postData = null;
+
+if (!$action && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $input = file_get_contents('php://input');
+    $postData = json_decode($input, true);
+    $action = $postData['action'] ?? null;
+}
+
+if (!$action) {
+    echo json_encode(['success' => false, 'error' => 'No action specified']);
+    exit;
+}
+
+/**
+ * Get the real client IP address (handles Cloudflare proxy)
+ */
+function getClientIp() {
+    $ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ??
+          $_SERVER['HTTP_X_FORWARDED_FOR'] ??
+          $_SERVER['REMOTE_ADDR'] ??
+          'unknown';
+
+    if (strpos($ip, ',') !== false) {
+        $ip = trim(explode(',', $ip)[0]);
+    }
+
+    return $ip;
+}
+
+/**
+ * Check if an IP is on a specific list (whitelist or blacklist)
+ */
+function isIpOnList($ip, $listType) {
+    $db = getDb();
+    $stmt = $db->prepare("SELECT COUNT(*) FROM ip_lists WHERE ip = :ip AND list_type = :type");
+    $stmt->execute([':ip' => $ip, ':type' => $listType]);
+    return $stmt->fetchColumn() > 0;
+}
+
+/**
+ * Check if the client IP is blacklisted — call before any write action
+ */
+function checkBlacklist() {
+    $ip = getClientIp();
+    if (isIpOnList($ip, 'blacklist')) {
+        throw new Exception("Access denied.");
+    }
+}
+
+/**
+ * Rate limiting via SQLite (whitelist checked from ip_lists table)
+ */
+function checkRateLimit($action) {
+    $ip = getClientIp();
+
+    // Whitelist IPs are exempt from rate limiting
+    if (isIpOnList($ip, 'whitelist')) {
+        return true;
+    }
+
+    $db = getDb();
+
+    // Clean old entries
+    $db->exec("DELETE FROM rate_limits WHERE requested_at < datetime('now', '-1 day')");
+
+    // Record this request
+    $stmt = $db->prepare("INSERT INTO rate_limits (ip, action, requested_at) VALUES (:ip, :action, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))");
+    $stmt->execute([':ip' => $ip, ':action' => $action]);
+
+    // Count requests in the last hour
+    $stmt = $db->prepare("SELECT COUNT(*) FROM rate_limits WHERE ip = :ip AND action = :action AND requested_at > datetime('now', '-1 hour')");
+    $stmt->execute([':ip' => $ip, ':action' => $action]);
+    $count = $stmt->fetchColumn();
+
+    $maxRequests = 10;
+    if ($count > $maxRequests) {
+        throw new Exception("Rate limit exceeded. Please try again later.");
+    }
+
+    return true;
+}
+
+try {
+    switch ($action) {
+        case 'get_reports':
+            $db = getDb();
+            $stmt = $db->query("SELECT * FROM reports WHERE timestamp > datetime('now', '-3 days') ORDER BY timestamp DESC");
+            $reports = [];
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $reports[] = rowToReport($row);
+            }
+            echo json_encode([
+                'success' => true,
+                'reports' => $reports
+            ]);
+            break;
+
+        case 'add_report':
+            checkBlacklist();
+            checkRateLimit('add_report');
+
+            if (!$postData || !isset($postData['report'])) {
+                throw new Exception('No report data provided');
+            }
+
+            $report = $postData['report'];
+
+            if (!isset($report['road_id']) || !isset($report['road_name']) || !isset($report['status'])) {
+                throw new Exception('Missing required fields');
+            }
+
+            $validStatuses = ['clear', 'snow', 'ice-patches', 'blocked-tree', 'blocked-power'];
+            if (!in_array($report['status'], $validStatuses)) {
+                throw new Exception('Invalid status');
+            }
+
+            $reportId = uniqid('report_', true);
+
+            if (isset($report['notes'])) {
+                $report['notes'] = strip_tags($report['notes']);
+                $report['notes'] = filterInappropriateContent($report['notes']);
+
+                if (strlen($report['notes']) > 500) {
+                    throw new Exception('Notes are too long (maximum 500 characters)');
+                }
+            }
+
+            $timestamp = $report['timestamp'] ?? date('c');
+
+            $db = getDb();
+            $db->beginTransaction();
+
+            $clientIp = getClientIp();
+
+            $stmt = $db->prepare('
+                INSERT INTO reports (id, road_id, road_name, segment, segment_description, geometry, status, notes, timestamp, segment_ids, ip)
+                VALUES (:id, :road_id, :road_name, :segment, :segment_description, :geometry, :status, :notes, :timestamp, :segment_ids, :ip)
+            ');
+            $stmt->execute([
+                ':id' => $reportId,
+                ':road_id' => $report['road_id'],
+                ':road_name' => $report['road_name'],
+                ':segment' => $report['segment'] ?? null,
+                ':segment_description' => $report['segment_description'] ?? null,
+                ':geometry' => isset($report['geometry']) ? json_encode($report['geometry']) : null,
+                ':status' => $report['status'],
+                ':notes' => $report['notes'] ?? null,
+                ':timestamp' => $timestamp,
+                ':segment_ids' => isset($report['segmentIds']) ? json_encode($report['segmentIds']) : null,
+                ':ip' => $clientIp,
+            ]);
+
+            // Triggers on reports table auto-insert into report_changes
+
+            // Purge expired reports periodically
+            $db->exec("DELETE FROM reports WHERE timestamp <= datetime('now', '-3 days')");
+            // Purge old change log entries
+            $db->exec("DELETE FROM report_changes WHERE changed_at < datetime('now', '-1 day')");
+
+            $db->commit();
+
+            // Return the report as the frontend expects it
+            $report['id'] = $reportId;
+            $report['timestamp'] = $timestamp;
+
+            echo json_encode([
+                'success' => true,
+                'report' => $report
+            ]);
+            break;
+
+        case 'delete_report':
+            checkBlacklist();
+            checkRateLimit('delete_report');
+
+            if (!$postData || !isset($postData['id'])) {
+                throw new Exception('No report ID provided');
+            }
+
+            $db = getDb();
+            $db->beginTransaction();
+
+            $stmt = $db->prepare('DELETE FROM reports WHERE id = :id');
+            $stmt->execute([':id' => $postData['id']]);
+
+            if ($stmt->rowCount() === 0) {
+                $db->rollBack();
+                throw new Exception('Report not found');
+            }
+
+            // Triggers on reports table auto-insert into report_changes
+
+            $db->commit();
+
+            echo json_encode(['success' => true]);
+            break;
+
+        case 'get_changes':
+            // SSE uses this to get delta updates since a given change_id
+            $sinceId = isset($_GET['since']) ? (int)$_GET['since'] : 0;
+
+            $db = getDb();
+            $stmt = $db->prepare("
+                SELECT c.change_id, c.change_type, c.report_id, c.changed_at,
+                       r.id, r.road_id, r.road_name, r.segment, r.segment_description,
+                       r.geometry, r.status, r.notes, r.timestamp, r.segment_ids
+                FROM report_changes c
+                LEFT JOIN reports r ON c.report_id = r.id
+                WHERE c.change_id > :since_id
+                ORDER BY c.change_id ASC
+            ");
+            $stmt->execute([':since_id' => $sinceId]);
+
+            $changes = [];
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $change = [
+                    'changeId' => (int)$row['change_id'],
+                    'changeType' => $row['change_type'],
+                    'reportId' => $row['report_id'],
+                ];
+                // For 'add' changes, include the full report data
+                if ($row['change_type'] === 'add' && $row['id'] !== null) {
+                    $change['report'] = rowToReport($row);
+                }
+                $changes[] = $change;
+            }
+
+            echo json_encode(['success' => true, 'changes' => $changes]);
+            break;
+
+        case 'get_roads':
+            if (file_exists($cacheFile) && filesize($cacheFile) > 0) {
+                header("Cache-Control: no-cache, must-revalidate");
+                header("Pragma: no-cache");
+                header("Expires: 0");
+
+                readfile($cacheFile);
+            } else {
+                throw new Exception('Road data not available. Please wait for the next data rebuild.');
+            }
+            break;
+
+        case 'get_roads_stream':
+            $jsonlFile = $dataDir . '/roads_optimized.jsonl';
+
+            if (!file_exists($jsonlFile) || filesize($jsonlFile) == 0) {
+                throw new Exception('Road data not available. Please wait for the next data rebuild.');
+            }
+
+            while (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+
+            header("Content-Type: application/x-ndjson");
+            header("Cache-Control: no-cache, must-revalidate");
+            header("Pragma: no-cache");
+            header("Expires: 0");
+            header("X-Accel-Buffering: no");
+
+            $handle = fopen($jsonlFile, 'r');
+            if ($handle) {
+                while (($line = fgets($handle)) !== false) {
+                    echo $line;
+                    flush();
+                }
+                fclose($handle);
+            }
+            exit(0);
+            break;
+
+        case 'get_reports_stream':
+            // Stream reports from SQLite as NDJSON
+            while (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+
+            header("Content-Type: application/x-ndjson");
+            header("Cache-Control: no-cache, must-revalidate");
+            header("Pragma: no-cache");
+            header("Expires: 0");
+            header("X-Accel-Buffering: no");
+
+            $db = getDb();
+            $stmt = $db->query("SELECT * FROM reports WHERE timestamp > datetime('now', '-3 days') ORDER BY timestamp DESC");
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                echo json_encode(rowToReport($row)) . "\n";
+                flush();
+            }
+            exit(0);
+            break;
+
+        default:
+            throw new Exception('Invalid action');
+    }
+} catch (Throwable $e) {
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'error' => $e->getMessage()
+    ]);
+}
+?>

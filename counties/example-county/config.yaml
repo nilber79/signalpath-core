@@ -1,0 +1,41 @@
+county:
+  name: "Example County"
+  state: "Example State"
+  # OSM relation ID — find yours at https://www.openstreetmap.org/
+  # Search for your county name, click the relation result, note the ID in the URL
+  osm_relation_id: 0000000
+  # Map default center as [longitude, latitude]
+  # Tip: Google Maps right-click → "What's here?" gives lat,lng — reverse the order here
+  center: [-90.0000, 35.0000]
+  default_zoom: 11
+  # Radius (km) within which a user's GPS is considered "local" (80 km ≈ 50 miles)
+  proximity_radius_km: 80
+
+app:
+  title: "Example County Road Status"
+  subtitle: "Real-time, community-based, road condition reports for Example County, Example State"
+  contact_email: "your-email@example.com"
+  owner_name: "Your Name"
+  copyright_year: "2026"
+
+data:
+  # Find your state/region at https://download.geofabrik.de/
+  geofabrik_url: "https://download.geofabrik.de/north-america/us/your-state-latest.osm.pbf"
+  # This becomes the filename: <pmtiles_area_name>.pmtiles and is passed to planetiler --area
+  pmtiles_area_name: "your-state"
+  overpass_url: "https://overpass-api.de/api/interpreter"
+  # Include the highway types relevant to your area
+  road_types:
+    - motorway
+    - trunk
+    - primary
+    - secondary
+    - tertiary
+    - unclassified
+    - residential
+    - service
+
+segments:
+  min_distance_km: 0.4
+  max_distance_km: 3.2
+  simplify_tolerance: 0.0001

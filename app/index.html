@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>SIGNALPATH_TITLE</title>
+
+    <!-- Critical: Prevent flash of Vue templates before initialization -->
+    <style>
+        [v-cloak] { display: none !important; }
+    </style>
+
+    <!-- MapLibre GL CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <!-- Application Styles -->
+    <link rel="stylesheet" href="css/style.css?v=20260219-v9" />
+</head>
+<body>
+    <div id="app" v-cloak>
+        <header class="modern-header">
+            <div class="header-left">
+                <h1 class="header-title">SIGNALPATH_TITLE</h1>
+                <p class="subtitle">SIGNALPATH_SUBTITLE</p>
+            </div>
+
+            <nav class="header-nav">
+                <!-- Notification Bell -->
+                <div
+                    v-if="notificationsSupported"
+                    class="nav-item"
+                    @mouseenter="notificationsEnabled ? showNotificationSettings = true : null"
+                    @mouseleave="showNotificationSettings = false"
+                >
+                    <button
+                        class="nav-notification-btn"
+                        :class="{ active: notificationsEnabled }"
+                        @click="toggleNotifications()"
+                        :title="notificationsEnabled ? 'Notifications enabled' : 'Enable notifications'"
+                    >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                        </svg>
+                    </button>
+                    <div class="nav-dropdown notification-dropdown" :class="{ active: showNotificationSettings && notificationsEnabled }" @mouseenter="showNotificationSettings = true" @mouseleave="showNotificationSettings = false">
+                        <div class="dropdown-content">
+                            <h3 class="dropdown-title">Notify me about</h3>
+                            <div class="notification-status-list">
+                                <label v-for="status in statusTypes" :key="status.value" class="notification-status-option">
+                                    <input
+                                        type="checkbox"
+                                        :checked="notificationStatuses.includes(status.value)"
+                                        @change="toggleNotificationStatus(status.value)"
+                                    />
+                                    <span class="notification-status-swatch" :style="{ background: status.color }"></span>
+                                    <span>{{ status.label }}</span>
+                                </label>
+                            </div>
+
+                            <div class="dropdown-divider"></div>
+
+                            <div class="dropdown-section">
+                                <h4 class="dropdown-section-title"></h4>
+                                <p class="dropdown-text">
+                                    <strong>Note about notifications.</strong> This page must remain open in your browser to receive notifications.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div
+                    class="nav-item"
+                    @mouseenter="showLegendDropdown = true"
+                    @mouseleave="showLegendDropdown = false"
+                >
+                    <span class="nav-link">
+                        Legend
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" style="margin-left: 4px;">
+                            <path d="M6 9L1 4h10z"/>
+                        </svg>
+                    </span>
+                    <div class="nav-dropdown" :class="{ active: showLegendDropdown }">
+                        <div class="dropdown-content legend-dropdown">
+                            <h3 class="dropdown-title">Road Status Legend</h3>
+                            <div class="legend-grid">
+                                <div class="legend-item" v-for="status in statusTypes" :key="status.value">
+                                    <div class="legend-color" :style="{ background: status.color }"></div>
+                                    <div class="legend-text">{{ status.label }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div
+                    class="nav-item"
+                    @mouseenter="showInfoDropdown = true"
+                    @mouseleave="showInfoDropdown = false"
+                >
+                    <span class="nav-link">
+                        Info
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" style="margin-left: 4px;">
+                            <path d="M6 9L1 4h10z"/>
+                        </svg>
+                    </span>
+                    <div class="nav-dropdown info-dropdown" :class="{ active: showInfoDropdown }">
+                        <div class="dropdown-content">
+                            <div class="dropdown-actions">
+                                <button class="dropdown-action-btn" @click="showAboutModal = true; showInfoDropdown = false">
+                                    <span class="dropdown-action-icon">ℹ️</span>
+                                    <span>About</span>
+                                </button>
+                                <button class="dropdown-action-btn" @click="showHelpModal = true; showInfoDropdown = false">
+                                    <span class="dropdown-action-icon">📖</span>
+                                    <span>Instructions</span>
+                                </button>
+                                <button class="dropdown-action-btn" @click="showDisclaimerModal = true; showInfoDropdown = false">
+                                    <span class="dropdown-action-icon">⚠️</span>
+                                    <span>Disclaimer</span>
+                                </button>
+                            </div>
+
+                            <div class="dropdown-divider"></div>
+
+                            <div class="dropdown-section">
+                                <h4 class="dropdown-section-title">Data Sources & Disclaimers</h4>
+                                <p class="dropdown-text">
+                                    <strong>Map Data:</strong> Base map tiles and road data are provided by
+                                    <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap contributors</a> and
+                                    <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a>.
+                                </p>
+                                <p class="dropdown-text">
+                                    <strong>Not Official:</strong> This is an independent community tool and is NOT affiliated with Morgan County government,
+                                    Tennessee state government, or any official emergency services.
+                                </p>
+                                <p class="dropdown-text">
+                                    <strong>Community Reports:</strong> Road condition reports are submitted by community members and may not be verified.
+                                    Always use caution and your best judgment when traveling.
+                                </p>
+                                <p class="dropdown-text">
+                                    <strong>Traffic and Accident Reporting:</strong> This application intentionally does not include traffic or accident reporting data. There are any number of existing applications that provide this data and/or capability. </strong>
+                                </p>
+                                <p class="dropdown-text mail-link">
+                                    <a href="mailto:SIGNALPATH_CONTACT_EMAIL">Contact the developer</a>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </nav>
+
+            <button class="hamburger-btn" @click="toggleMobileMenu" aria-label="Toggle menu">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </header>
+
+        <!-- Mobile Menu -->
+        <div class="mobile-menu-overlay" :class="{ active: mobileMenuOpen }" @click="closeMobileMenu"></div>
+        <div class="mobile-menu" :class="{ active: mobileMenuOpen }">
+            <div class="mobile-menu-header">
+                <h3>Menu</h3>
+                <button class="mobile-menu-close" @click="closeMobileMenu">&times;</button>
+            </div>
+            <div class="mobile-menu-items">
+                <button class="mobile-menu-item" @click="openRoadReports">
+                    <span class="mobile-menu-icon">📋</span>
+                    <span>Road Reports</span>
+                </button>
+                <button class="mobile-menu-item" @click="toggleMobileLegend">
+                    <span class="mobile-menu-icon">🗺️</span>
+                    <span>Legend</span>
+                    <span class="mobile-menu-arrow" :class="{ rotated: showMobileLegend }">▼</span>
+                </button>
+                <div class="mobile-submenu" v-if="showMobileLegend">
+                    <div class="legend-grid">
+                        <div class="legend-item" v-for="status in statusTypes" :key="status.value">
+                            <div class="legend-color" :style="{ background: status.color }"></div>
+                            <div class="legend-text">{{ status.label }}</div>
+                        </div>
+                    </div>
+                </div>
+                <button class="mobile-menu-item" @click="toggleMobileInfo">
+                    <span class="mobile-menu-icon">ℹ️</span>
+                    <span>Info</span>
+                    <span class="mobile-menu-arrow" :class="{ rotated: showMobileInfo }">▼</span>
+                </button>
+                <div class="mobile-submenu" v-if="showMobileInfo">
+                    <div class="mobile-info-actions">
+                        <button class="mobile-info-btn" @click="openAbout">
+                            <span>ℹ️</span>
+                            About
+                        </button>
+                        <button class="mobile-info-btn" @click="openInstructions">
+                            <span>📖</span>
+                            Instructions
+                        </button>
+                        <button class="mobile-info-btn" @click="openDisclaimer">
+                            <span>⚠️</span>
+                            Disclaimer
+                        </button>
+                    </div>
+                </div>
+                <button v-if="notificationsSupported" class="mobile-menu-item" @click="toggleMobileNotifications">
+                    <span class="mobile-menu-icon">🔔</span>
+                    <span>Notifications</span>
+                    <span class="mobile-menu-arrow" :class="{ rotated: showMobileNotifications }">▼</span>
+                </button>
+                <div class="mobile-submenu" v-if="notificationsSupported && showMobileNotifications">
+                    <div class="notification-toggle-row">
+                        <span class="notification-toggle-label">Enable notifications</span>
+                        <label class="slide-toggle" @click.prevent="toggleNotifications()">
+                            <input type="checkbox" :checked="notificationsEnabled" />
+                            <span class="slide-toggle-track">
+                                <span class="slide-toggle-thumb"></span>
+                            </span>
+                        </label>
+                    </div>
+                    <template v-if="notificationsEnabled">
+                        <p style="font-size: 0.8125rem; color: var(--color-text-soft); margin: 0.75rem 0;">Notify me about:</p>
+                        <label v-for="status in statusTypes" :key="status.value" class="notification-status-option">
+                            <input
+                                type="checkbox"
+                                :checked="notificationStatuses.includes(status.value)"
+                                @change="toggleNotificationStatus(status.value)"
+                            />
+                            <span class="notification-status-swatch" :style="{ background: status.color }"></span>
+                            <span>{{ status.label }}</span>
+                        </label>
+                        <p style="font-size: 0.75rem; color: var(--color-text-soft); margin-top: 0.75rem; line-height: 1.5;"><strong>Note about notifications.</strong> This page must remain open in your browser to receive notifications.</p>
+                    </template>
+                </div>
+
+                <!-- Data Sources & Disclaimers - Always visible -->
+                <div class="mobile-menu-static-section">
+                    <h4>Data Sources & Disclaimers</h4>
+                    <p><strong>Map Data:</strong> Base map tiles and road data are provided by
+                        <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap contributors</a> and
+                        <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a>.
+                    </p>
+                    <p><strong>Not Official:</strong> This is an independent community tool and is NOT affiliated with Morgan County government, Tennessee state government, or any official emergency services.
+                    </p>
+                    <p><strong>Community Reports:</strong> Road condition reports are submitted by community members and may not be verified.
+                    Always use caution and your best judgment when traveling.
+                    </p>
+                    <p><strong>Traffic and Accident Reporting:</strong> This application intentionally does not include traffic or accident reporting data. There are any number of existing applications that provide this data and/or capability.</p>
+                    <p class="mail-link">
+                            <a href="mailto:SIGNALPATH_CONTACT_EMAIL">Contact the developer</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-container">
+            <!-- Sidebar overlay for mobile -->
+            <div class="sidebar-overlay" :class="{ active: sidebarOpen }" @click="toggleSidebar"></div>
+            
+            <div class="map-wrapper">
+                <div id="map"></div>
+                <div class="loading-indicator" :class="{ active: loading }">
+                    <div class="loading-spinner"></div>
+                    <div>{{ loadingMessage }}</div>
+                </div>
+
+                <!-- Zoom Level Indicator -->
+                <div class="zoom-indicator">
+                    Zoom: {{ currentZoom.toFixed(1) }}
+                </div>
+
+                <!-- Road Selection Banner -->
+                <div class="selection-banner" v-if="selectionMode && selectedRoad">
+                    <div class="selection-header">Submit Report: Select A Road</div>
+                    <div class="selection-subtitle">{{ selectedRoad.name || 'Unnamed Road' }}</div>
+                    <div class="selection-subtitle" style="font-size: 0.8125rem; margin-top: 0.25rem;">
+                        <span v-if="!hasExistingReports">Click a segment, select All Highlighted, or report the Entire Road</span>
+                        <span v-else>Click an unreported segment on the map to continue</span>
+                    </div>
+                    <div class="selection-actions">
+                        <button class="btn btn-secondary btn-small" @click="cancelSelection">
+                            Cancel
+                        </button>
+                        <button v-if="!hasExistingReports" class="btn btn-secondary btn-small" @click="selectEntireRoad">
+                            Entire Road
+                        </button>
+                        <button v-if="!hasExistingReports" class="btn btn-primary btn-small" @click="selectAllSegments">
+                            All Highlighted
+                        </button>
+                        <button 
+                            class="btn btn-primary btn-small" 
+                            @click="continueWithSelection"
+                            :disabled="selectedSegments.length === 0"
+                        >
+                            Continue
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Location pick banner — shown over the map when user is tapping to set coordinates -->
+                <div class="selection-banner" v-if="locationPickMode">
+                    <div class="selection-header">Tap map to set location</div>
+                    <div class="selection-subtitle" style="font-size: 0.8125rem; margin-top: 0.25rem;">
+                        Tap anywhere on the map to update the coordinates in your report
+                    </div>
+                    <div class="selection-actions">
+                        <button class="btn btn-secondary btn-small" @click="cancelLocationPick">Cancel</button>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Mobile Bottom Sheet for Report -->
+            <div class="mobile-sheet-overlay" :class="{ active: showMobileSheet }" @click.self="handleMapClick"></div>
+            <div class="mobile-report-sheet" :class="{ active: showMobileSheet }">
+                <div class="mobile-sheet-handle" @click="closeMobileSheet"></div>
+                <div class="mobile-sheet-content" v-if="mobileSheetReport">
+                    <div class="report-card expanded">
+                        <div class="report-header">
+                            <div
+                                class="report-status-badge tooltip"
+                                :style="{ background: getStatusColor(mobileSheetReport.status) }"
+                                :data-tooltip="getStatusLabel(mobileSheetReport.status)"
+                            ></div>
+                            <div class="report-location">{{ mobileSheetReport.road_name }}</div>
+                            <div class="report-time">{{ formatTime(mobileSheetReport.timestamp) }}</div>
+                        </div>
+                        <div class="report-segment" v-if="mobileSheetReport.segment_description && mobileSheetReport.segment_description !== 'All visible segments'">
+                            {{ mobileSheetReport.segment_description }}
+                        </div>
+                        <div class="report-notes" v-if="mobileSheetReport.notes">
+                            <template v-for="(part, i) in parseNotesParts(mobileSheetReport.notes)" :key="i">
+                                <button v-if="part.type === 'location'" class="location-coords-link" @click="handleLocationClick(part.lat, part.lng)">📍 {{ part.display }}</button>
+                                <span v-else>{{ part.text }}</span>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <aside class="sidebar" :class="{ open: sidebarOpen }">
+                <div class="sidebar-header">
+                    <h2>{{ showSidebarReportForm ? 'Submit Report' : 'Road Reports' }}</h2>
+                    <button class="sidebar-collapse-btn" @click="toggleSidebar" title="Close sidebar">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="9 18 15 12 9 6"></polyline>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="sidebar-content">
+                    <!-- Reports List - Shown when not in submit mode -->
+                    <div v-if="!showSidebarReportForm" style="display: flex; flex-direction: column; height: 100%; margin: -1.5rem; padding: 0;">
+                        <!-- Fixed Search and Filter Header -->
+                        <div style="flex-shrink: 0; background: var(--color-surface); border-bottom: 1px solid var(--color-border); padding: 0.75rem 1.5rem 1rem 1.5rem;">
+                            <!-- Search Box -->
+                            <div class="search-box" style="margin-bottom: 0.75rem;">
+                                <input 
+                                    type="text" 
+                                    class="search-input" 
+                                    placeholder="Search roads..."
+                                    v-model="searchQuery"
+                                    @input="searchRoads"
+                                />
+                            </div>
+                            
+                            <!-- Status Filter -->
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label class="form-label" style="margin-bottom: 0.5rem;">Filter by Status</label>
+                                <select class="form-select" v-model="statusFilter" style="padding: 0.5rem;">
+                                    <option value="all">All Statuses</option>
+                                    <option v-for="status in statusTypes" :key="status.value" :value="status.value">
+                                        {{ status.label }}
+                                    </option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <!-- Scrollable Reports List -->
+                        <div style="flex: 1; overflow-y: auto; padding: 1.5rem;" ref="reportsListContainer">
+                            <!-- Reported Roads -->
+                            <div v-if="filteredReports.length === 0 && searchQuery.length < 2" class="empty-state">
+                                <div class="empty-state-icon">📋</div>
+                                <p>No reports yet</p>
+                            </div>
+
+                            <!-- Grouped Reports by Road -->
+                            <div
+                                v-for="group in groupedReports"
+                                :key="group.roadName"
+                                class="report-group"
+                                :data-road-name="group.roadName"
+                            >
+                                <div class="report-group-header">
+                                    <div class="report-location">{{ group.roadName }}</div>
+                                    <div class="report-time">{{ formatTime(group.reports[0].timestamp) }}</div>
+                                </div>
+
+                                <div
+                                    v-for="report in group.reports"
+                                    :key="report.id"
+                                    class="report-card"
+                                    :class="{ expanded: expandedReportId === report.id }"
+                                    @click="toggleReportExpansion(report)"
+                                >
+                                    <div class="report-segment-line">
+                                        <div
+                                            class="report-status-badge tooltip"
+                                            :style="{ background: getStatusColor(report.status) }"
+                                            :data-tooltip="getStatusLabel(report.status)"
+                                        ></div>
+                                        <div class="report-segment">
+                                            {{ report.segment_description && report.segment_description !== 'All visible segments' ? report.segment_description : 'All segments' }}
+                                        </div>
+                                    </div>
+                                    <div class="report-notes" v-if="report.notes">
+                                        <template v-for="(part, i) in parseNotesParts(report.notes)" :key="i">
+                                            <button v-if="part.type === 'location'" class="location-coords-link" @click="handleLocationClick(part.lat, part.lng)">📍 {{ part.display }}</button>
+                                            <span v-else>{{ part.text }}</span>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Divider before unreported roads -->
+                            <div v-if="searchQuery.length >= 2 && unreportedSearchResults.length > 0 && filteredReports.length > 0" 
+                                 style="border-top: 1px solid var(--color-border); margin: 1rem 0;">
+                            </div>
+                            
+                            <!-- Search Results (roads without reports) -->
+                            <div v-if="searchQuery.length >= 2 && unreportedSearchResults.length > 0">
+                                <div style="font-size: 0.875rem; font-weight: 600; color: var(--color-text-soft); margin-bottom: 0.5rem;">
+                                    Roads (No Report)
+                                </div>
+                                <div 
+                                    v-for="road in unreportedSearchResults"
+                                    :key="'search-' + road.id"
+                                    class="report-card"
+                                    @click="selectRoadFromSearch(road)"
+                                    style="cursor: pointer;"
+                                >
+                                    <div class="report-location">{{ road.name || 'Unnamed Road' }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Submit Report Form -->
+                    <div v-if="showSidebarReportForm">
+                        <div class="segment-info">
+                            <div class="segment-label">Road</div>
+                            <div class="segment-text">{{ selectedRoad?.name || 'Unnamed Road' }}</div>
+                        </div>
+                        
+                        <div class="segment-info" v-if="newReport.segment !== 'entire' && typeof newReport.segment === 'number'">
+                            <div class="segment-label">Segment</div>
+                            <div class="segment-text">{{ roadSegments[newReport.segment]?.description }}</div>
+                        </div>
+
+                        <div class="segment-info" v-if="newReport.segment === 'entire'">
+                            <div class="segment-label">Segment</div>
+                            <div class="segment-text">All visible segments</div>
+                        </div>
+
+                        <div class="segment-info" v-if="newReport.segment === 'combined'">
+                            <div class="segment-label">Segment</div>
+                            <div class="segment-text">{{ newReport.combinedSegment?.description }}</div>
+                        </div>
+
+                        <div v-if="newReport.segment === 'multiple'" style="margin-bottom: 1rem;">
+                            <div class="segment-info" v-for="(group, idx) in newReport.segmentGroups" :key="idx" style="margin-bottom: 0.5rem;">
+                                <div class="segment-label">Segment {{ idx + 1 }} of {{ newReport.segmentGroups.length }}</div>
+                                <div class="segment-text">{{ group.description }}</div>
+                            </div>
+                            <div style="font-size: 0.875rem; color: var(--color-text-soft); margin-top: 0.5rem; font-style: italic;">
+                                {{ newReport.segmentGroups.length }} separate reports will be created
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Road Status *</label>
+                            <div class="status-buttons">
+                                <button 
+                                    v-for="status in statusTypes" 
+                                    :key="status.value"
+                                    type="button"
+                                    class="status-btn"
+                                    :class="{ selected: newReport.status === status.value }"
+                                    @click="selectStatus(status.value)"
+                                >
+                                    <div class="status-btn-color" :style="{ background: status.color }"></div>
+                                    <div class="status-btn-label">{{ status.label }}</div>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Notes (optional)</label>
+                            <textarea
+                                class="form-textarea"
+                                v-model="newReport.notes"
+                                placeholder="Additional details about the road condition..."
+                            ></textarea>
+                            <div v-if="isBlockedStatus" class="location-pick-actions">
+                                <button type="button" class="btn-location" @click="startLocationPick">📍 Click map to set location</button>
+                            </div>
+                            <div v-if="locationPickMode" class="location-pick-banner">
+                                Click anywhere on the map to update coordinates
+                                <button type="button" class="btn-location-cancel" @click="cancelLocationPick">Cancel</button>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="display: flex; gap: 0.75rem;">
+                            <button class="btn btn-secondary" style="flex: 1;" @click="cancelSidebarReport">Cancel</button>
+                            <button 
+                                class="btn btn-primary" 
+                                style="flex: 1;"
+                                @click="submitReport"
+                                :disabled="!newReport.status"
+                            >
+                                Submit Report
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+
+        <!-- About Modal -->
+        <div class="modal-overlay" v-if="showAboutModal" @click.self="showAboutModal = false">
+            <div class="modal modal-large">
+                <div class="modal-header">
+                    <h3>About This Application</h3>
+                    <button class="modal-close" @click="showAboutModal = false">&times;</button>
+                </div>
+                <div class="modal-content">
+                        <ul>
+                            <li><strong>View and report</strong> real-time road conditions in Morgan County, Tennessee.</li>
+                            <li><strong>Community-sourced</strong> enables rapid data collection immediately following natural disasters.</li>
+                            <li><strong>Aid</strong> community leaders, emergency management personnel, first responders, highway maintenance, and utilities in making informed decisions.</li>
+                            <li><strong>Facilitate</strong> strategic deployment of resources.</li>
+                            <li><strong>Reduce</strong> telephone or radio traffic to report road conditions, allowing E911 Dispatchers or Emergency Operations Center personnel to focus on other tasks.</li>
+                            <li><strong>Reduce</strong> need for first responders to be deployed to assess road conditions.</li>
+                        </ul>
+                        <p>
+                            <strong>Traffic and Accident Reporting:</strong> This application intentionally does not include traffic or accident reporting data. There are any number of existing applications that provide this data and/or capability.
+                        </p>
+                        <p class="mail-link">
+                            <a href="mailto:SIGNALPATH_CONTACT_EMAIL">Contact the developer</a>
+                        </p>
+                        <p style="font-size: 0.8125rem; color: var(--color-text-soft); border-top: 1px solid var(--color-border); padding-top: 0.75rem; margin-top: 0.5rem;">
+                            Copyright &copy; SIGNALPATH_COPYRIGHT_YEAR SIGNALPATH_OWNER_NAME. All rights reserved.
+                        </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Help Modal -->
+        <div class="modal-overlay" v-if="showHelpModal" @click.self="showHelpModal = false">
+            <div class="modal modal-large">
+                <div class="modal-header">
+                    <h3>Instructions</h3>
+                    <button class="modal-close" @click="showHelpModal = false">&times;</button>
+                </div>
+                <div class="modal-content">
+                    <section style="margin-bottom: 2rem;">
+                        <h4>How to View Reports</h4>
+                        <ol>
+                            <li><strong>Browse the Map:</strong> Road segments with active reports are highlighted in different colors based on their status.</li>
+                            <li><strong>Click on Highlighted Roads:</strong> Click any colored road segment to see detailed report information.</li>
+                            <li><strong>Use the Sidebar:</strong> Switch to the "Reports" tab to see a list of all active reports, searchable by road name.</li>
+                            <li><strong>Check the Legend:</strong> The "Legend" tab shows what each color means.</li>
+                        </ol>
+                    </section>
+
+                    <section style="margin-bottom: 2rem;">
+                        <h4>How to Submit a Report</h4>
+                        <ol>
+                            <li><strong>Select a Road:</strong> Click on any gray (unreported) road on the map.</li>
+                            <li><strong>Choose Segment:</strong> Select which part of the road you're reporting (entire road, single segment, or multiple segments).</li>
+                            <li><strong>Select Status:</strong> Choose the current road condition from the available options.</li>
+                            <li><strong>Add Notes (Optional):</strong> Provide additional details about the condition (max 500 characters). When reporting trees or power lines down, the GPS coordinates where you clicked will be prepopulated in the notes. On both desktop and mobile versions, there is a "Click map to set location" button that will allow you to refine the GPS coordinates by clicking on the map. On the mobile version, there will also be a "Use my GPS location" button to use your device's current location.</li>
+                            <li><strong>Submit:</strong> Click "Submit Report" to save your report.</li>
+                        </ol>
+                        <p><em>Note: Reports automatically expire after 3 days to keep information current.</em></p>
+                    </section>
+
+                    <section style="margin-bottom: 2rem;">
+                        <h4>Status Types</h4>
+                        <ul>
+                            <li><strong style="color: #10b981;">Clear:</strong> Road is passable with normal conditions</li>
+                            <li><strong style="color: #60a5fa;">Snow Covered:</strong> Road has snow coverage</li>
+                            <li><strong style="color: #a78bfa;">Icy:</strong> Road has ice or icy patches</li>
+                            <li><strong style="color: #dc2626;">Blocked - Tree:</strong> Road is blocked by a fallen tree</li>
+                            <li><strong style="color: #f59e0b;">Blocked - Power Line:</strong> Road is blocked by a downed power line</li>
+                        </ul>
+                    </section>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Disclaimer Modal -->
+        <div class="modal-overlay" v-if="showDisclaimerModal" @click.self="showDisclaimerModal = false">
+            <div class="modal modal-large">
+                <div class="modal-header">
+                    <h3>Disclaimer</h3>
+                    <button class="modal-close" @click="showDisclaimerModal = false">&times;</button>
+                </div>
+                <div class="modal-content">
+                    <p>
+                        This disclaimer ("Disclaimer") sets forth the general guidelines, disclosures, and terms of your use of this
+                        website ("Website" or "Service") and any of its related products and services (collectively, "Services").
+                        This Disclaimer is a legally binding agreement between you ("User", "you" or "your") and this Website operator
+                        ("Operator", "we", "us" or "our"). By accessing and using the Website and Services, you acknowledge that you
+                        have read, understood, and agree to be bound by the terms of this Disclaimer.
+                    </p>
+
+                    <h4>Representation</h4>
+                    <p>
+                        Any views or opinions represented on the Website are personal and belong solely to the Operator and do not
+                        represent those of people, institutions or organizations that the Operator may or may not be associated with
+                        in professional or personal capacity unless explicitly stated. Any views or opinions are not intended to malign
+                        any religion, ethnic group, club, organization, company, or individual.
+                    </p>
+
+                    <h4>Content and Accuracy</h4>
+                    <p>
+                        Road condition reports are submitted by community members and are not verified by the Operator. The Operator
+                        makes no representations or warranties about the accuracy, reliability, completeness, or timeliness of any
+                        reports or information displayed on the Website.
+                    </p>
+
+                    <h4>Not Official Information</h4>
+                    <p>
+                        This Website is NOT affiliated with, endorsed by, or connected to SIGNALPATH_COUNTY_STATE government,
+                        or any official emergency services. Information provided on this Website should not be considered
+                        official and should not replace official sources of road condition information.
+                    </p>
+
+                    <h4>Indemnification and Warranties</h4>
+                    <p>
+                        While we have made every attempt to ensure that the information contained on the Website is correct, the
+                        Operator is not responsible for any errors or omissions, or for the results obtained from the use of this
+                        information. All information on the Website is provided "as is", with no guarantee of completeness, accuracy,
+                        timeliness or of the results obtained from the use of this information, and without warranty of any kind,
+                        express or implied.
+                    </p>
+                    <p>
+                        In no event will the Operator be liable to you or anyone else for any decision made or action taken in
+                        reliance on the information on the Website, or for any consequential, special or similar damages, even if
+                        advised of the possibility of such damages. Information contained on the Website is subject to change at any
+                        time and without warning.
+                    </p>
+
+                    <h4>Use at Your Own Risk</h4>
+                    <p>
+                        Travel decisions based on information from this Website are made at your own risk. Always exercise caution,
+                        use your best judgment, and consult official sources before traveling in potentially hazardous conditions.
+                    </p>
+
+                    <h4>Intellectual Property</h4>
+                    <p>
+                        The design, source code, and implementation of this Website and its Services are the intellectual
+                        property of SIGNALPATH_OWNER_NAME and are protected by applicable copyright and intellectual property laws.
+                        All rights reserved. Unauthorized copying, reproduction, modification, distribution, public display,
+                        or any other use of any part of this Website — in whole or in part — without the express written
+                        consent of the owner is strictly prohibited.
+                    </p>
+                    <p>
+                        Road condition data submitted by community members remains the contribution of the respective
+                        submitters. The Operator makes no claim of ownership over user-submitted content.
+                    </p>
+
+                    <h4>Data Sources</h4>
+                    <p>
+                        Map data © <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a> ©
+                        <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap contributors</a>.
+                        The Operator is not responsible for the accuracy of base map data.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Report Modal -->
+        <div class="modal-overlay" v-if="showReportModal" @click.self="closeModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>Submit Report</h3>
+                    <button class="modal-close" @click="closeModal">&times;</button>
+                </div>
+                <div class="modal-content">
+                    <div class="segment-info">
+                        <div class="segment-label">Road</div>
+                        <div class="segment-text">{{ selectedRoad?.name || 'Unnamed Road' }}</div>
+                    </div>
+                    
+                    <div class="segment-info" v-if="newReport.segment !== 'entire' && typeof newReport.segment === 'number'">
+                        <div class="segment-label">Segment</div>
+                        <div class="segment-text">{{ roadSegments[newReport.segment]?.description }}</div>
+                    </div>
+
+                    <div class="segment-info" v-if="newReport.segment === 'entire'">
+                        <div class="segment-label">Segment</div>
+                        <div class="segment-text">All visible segments</div>
+                    </div>
+
+                    <div class="segment-info" v-if="newReport.segment === 'combined'">
+                        <div class="segment-label">Segment</div>
+                        <div class="segment-text">{{ newReport.combinedSegment?.description }}</div>
+                    </div>
+
+                    <div v-if="newReport.segment === 'multiple'" style="margin-bottom: 1rem;">
+                        <div class="segment-info" v-for="(group, idx) in newReport.segmentGroups" :key="idx" style="margin-bottom: 0.5rem;">
+                            <div class="segment-label">Segment {{ idx + 1 }} of {{ newReport.segmentGroups.length }}</div>
+                            <div class="segment-text">{{ group.description }}</div>
+                        </div>
+                        <div style="font-size: 0.875rem; color: var(--color-text-soft); margin-top: 0.5rem; font-style: italic;">
+                            {{ newReport.segmentGroups.length }} separate reports will be created
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Road Status *</label>
+                        <div class="status-buttons">
+                            <button 
+                                v-for="status in statusTypes" 
+                                :key="status.value"
+                                type="button"
+                                class="status-btn"
+                                :class="{ selected: newReport.status === status.value }"
+                                @click="selectStatus(status.value)"
+                            >
+                                <div class="status-btn-color" :style="{ background: status.color }"></div>
+                                <div class="status-btn-label">{{ status.label }}</div>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Notes (optional)</label>
+                        <textarea
+                            class="form-textarea"
+                            v-model="newReport.notes"
+                            placeholder="Additional details about the road condition..."
+                        ></textarea>
+                        <div v-if="isBlockedStatus" class="location-pick-actions">
+                            <button type="button" class="btn-location" @click="useGpsLocation">🎯 Use my GPS location</button>
+                            <button type="button" class="btn-location" @click="startLocationPick">📍 Click map to set location</button>
+                        </div>
+                        <div v-if="locationPickMode" class="location-pick-banner">
+                            Tap anywhere on the map to update coordinates
+                            <button type="button" class="btn-location-cancel" @click="cancelLocationPick">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" @click="closeModal">Cancel</button>
+                    <button 
+                        class="btn btn-primary" 
+                        @click="submitReport"
+                        :disabled="!newReport.status"
+                    >
+                        Submit Report
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Foreground toast notifications (desktop, page visible) -->
+        <div class="toast-container" v-if="toasts.length > 0">
+            <div v-for="toast in toasts" :key="toast.id" class="toast">
+                <div class="toast-header">
+                    <span class="toast-dot" :style="{ background: toast.color }"></span>
+                    <span class="toast-road">{{ toast.road_name }}</span>
+                    <span class="toast-status">{{ toast.status_label }}</span>
+                    <button class="toast-close" @click="dismissToast(toast.id)">&times;</button>
+                </div>
+                <div v-if="toast.notes" class="toast-notes">
+                    <template v-for="(part, i) in parseNotesParts(toast.notes)" :key="i">
+                        <button v-if="part.type === 'location'" class="location-coords-link" @click="handleLocationClick(part.lat, part.lng)">📍 {{ part.display }}</button>
+                        <span v-else>{{ part.text }}</span>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Leaflet JS -->
+    <!-- MapLibre GL JS -->
+
+    <!-- External Libraries -->
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    
+    <!-- PMTiles Protocol -->
+    <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
+    
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+    <!-- Application Script -->
+    <script src="js/app.js?v=20260219-streamfix"></script>
+</body>
+</html>

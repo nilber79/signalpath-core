@@ -1,0 +1,32 @@
+# SignalPath — Behind Existing Reverse Proxy
+# ─────────────────────────────────────────────────────────────────────────────
+# Use this compose file if you already have a reverse proxy (Caddy, Nginx, Traefik)
+# handling TLS for your server. SignalPath runs on HTTP internally (port 80)
+# and your proxy routes traffic to it.
+#
+# Caddy example (add to your Caddyfile):
+#   roadstatus.yourcounty.gov {
+#       reverse_proxy signalpath:80
+#       import tls_external   # or your existing TLS snippet
+#   }
+#
+# The container name "signalpath" must be reachable from your proxy container
+# (put both on the same Docker network, e.g. caddy-net).
+
+services:
+  signalpath:
+    image: ghcr.io/${GHCR_ORG:-philreblin}/signalpath:${COUNTY_TAG:-morgan-tn-latest}
+    restart: unless-stopped
+    environment:
+      SERVER_NAME: ":80"   # HTTP only — TLS handled by upstream proxy
+    volumes:
+      - signalpath-db:/app/public/data
+    networks:
+      - proxy-net   # Change this to match your proxy's network name
+
+volumes:
+  signalpath-db:
+
+networks:
+  proxy-net:
+    external: true   # Must already exist; created by your proxy stack

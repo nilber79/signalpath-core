@@ -1,0 +1,115 @@
+name: Nightly Data Refresh
+
+on:
+  # Run every night at 3 AM Eastern (08:00 UTC)
+  schedule:
+    - cron: '0 8 * * *'
+  # Allow manual trigger from the Actions tab
+  workflow_dispatch:
+    inputs:
+      county:
+        description: 'County slug to rebuild (leave blank for all)'
+        required: false
+        default: ''
+
+jobs:
+  # Re-use the same discovery + county build logic as build.yml
+  # The core image is NOT rebuilt nightly (no app code changes expected).
+
+  discover:
+    name: Discover counties
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build county matrix
+        id: set
+        run: |
+          if [ -n "${{ github.event.inputs.county }}" ]; then
+            slugs='["${{ github.event.inputs.county }}"]'
+          else
+            slugs=$(ls counties/ | jq -R . | jq -sc .)
+          fi
+          echo "matrix={\"county\":$slugs}" >> $GITHUB_OUTPUT
+
+  county:
+    name: Refresh ${{ matrix.county }}
+    needs: discover
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: pip install requests shapely pyproj pyyaml
+
+      - name: Rebuild roads (Overpass API)
+        run: |
+          python scripts/rebuild_roads.py \
+            counties/${{ matrix.county }}/config.yaml \
+            --output build-output/data/
+
+      - name: Get Geofabrik Last-Modified date
+        id: pbf-date
+        run: |
+          url=$(python -c "
+          import yaml
+          cfg = yaml.safe_load(open('counties/${{ matrix.county }}/config.yaml'))
+          print(cfg['data']['geofabrik_url'])
+          ")
+          date=$(curl -sI "$url" | grep -i last-modified | sed 's/.*: //' | tr -d '\r')
+          echo "date=$date" >> $GITHUB_OUTPUT
+
+      # PMTiles are skipped when the Geofabrik PBF has not changed since the last run
+      - name: Cache Geofabrik PBF
+        uses: actions/cache@v4
+        with:
+          path: /tmp/geofabrik-cache
+          key: geofabrik-${{ matrix.county }}-${{ steps.pbf-date.outputs.date }}
+          restore-keys: |
+            geofabrik-${{ matrix.county }}-
+
+      - name: Update PMTiles
+        run: |
+          python scripts/update_pmtiles.py \
+            counties/${{ matrix.county }}/config.yaml \
+            --output build-output/tiles/ \
+            --cache-dir /tmp/geofabrik-cache
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Derive image tag
+        id: tag
+        run: |
+          slug=$(echo "${{ matrix.county }}" | tr '_' '-')
+          echo "val=${slug}-latest" >> $GITHUB_OUTPUT
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.county
+          push: true
+          build-args: |
+            COUNTY=${{ matrix.county }}
+            GHCR_ORG=${{ github.repository_owner }}
+          tags: ghcr.io/${{ github.repository_owner }}/signalpath:${{ steps.tag.outputs.val }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

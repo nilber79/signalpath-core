@@ -1,0 +1,25 @@
+{
+	# Enable FrankenPHP worker mode for better PHP performance
+	frankenphp
+}
+
+# SERVER_NAME controls the domain and TLS behaviour:
+#   SERVER_NAME=roadstatus.yourcounty.gov   → auto-TLS via Let's Encrypt (port 443)
+#   SERVER_NAME=:80                          → HTTP only (use when behind a proxy)
+#   SERVER_NAME=localhost                    → local dev, self-signed cert
+{$SERVER_NAME:localhost} {
+	root * /app/public
+
+	# Streaming endpoints must NOT be gzip-compressed or buffered
+	@streaming {
+		path /sse.php
+		path /api.php
+	}
+	handle @streaming {
+		php_server
+	}
+
+	# Everything else: compress static assets, serve files, process PHP
+	encode zstd br gzip
+	php_server
+}

@@ -1,0 +1,39 @@
+# SignalPath County Configuration Schema
+# ─────────────────────────────────────────────────────────────────────────────
+# This file documents every key accepted by counties/<slug>/config.yaml.
+# Copy counties/example-county/config.yaml as a starting point.
+
+county:
+  name:                 # string  — Full county name, e.g. "Morgan County"
+  state:                # string  — State/province name, e.g. "Tennessee"
+  osm_relation_id:      # int     — OSM relation ID (see openstreetmap.org/relation/<id>)
+                        #           Do NOT include the 3600000000 area prefix.
+  center:               # [lon, lat] — Map default center, e.g. [-84.6167, 36.1167]
+  default_zoom:         # int     — Default zoom level (10–12 for a typical county)
+  proximity_radius_km:  # float   — GPS proximity radius; users within this distance of
+                        #           center are offered geolocation flyTo. 80 ≈ 50 miles.
+
+app:
+  title:                # string  — Page title and app heading, e.g.
+                        #           "Morgan County, Tennessee Road Status"
+  subtitle:             # string  — Tagline shown under the heading
+  contact_email:        # string  — Mailto address shown in About and Help modals
+  owner_name:           # string  — Name shown in copyright notice
+  copyright_year:       # string  — Year (or range) in copyright notice, e.g. "2026"
+
+data:
+  geofabrik_url:        # string  — URL of the .osm.pbf extract from download.geofabrik.de
+  pmtiles_area_name:    # string  — Basename for the PMTiles file (also the planetiler
+                        #           --area argument), e.g. "tennessee"
+  overpass_url:         # string  — Overpass API endpoint (default: overpass-api.de)
+  road_types:           # list    — OSM highway values to include in road data
+                        #           (motorway, trunk, primary, secondary, tertiary,
+                        #            unclassified, residential, service)
+
+segments:
+  min_distance_km:      # float   — Minimum distance between intersection split points (km)
+                        #           Intersections closer than this are ignored. Default: 0.4
+  max_distance_km:      # float   — Maximum segment length (km). Longer segments are split
+                        #           into equal parts. Default: 3.2 (~2 miles)
+  simplify_tolerance:   # float   — Douglas-Peucker epsilon in degrees. Lower = more detail.
+                        #           Default: 0.0001 (~11 m at mid-latitudes)
