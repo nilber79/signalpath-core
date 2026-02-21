@@ -122,7 +122,28 @@ def run_planetiler(pbf_path: Path, area_name: str, output_file: Path):
         "--force",
     ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    # Planetiler downloads ancillary source files (water polygons, lake centrelines)
+    # from external servers that can be slow or temporarily unreachable.  Retry up to
+    # three times with a 60-second pause so transient timeouts don't fail the build.
+    _TRANSIENT_ERRORS = (
+        "TimeoutException",
+        "Error getting size of",
+        "ConnectException",
+        "SocketTimeoutException",
+        "Connection reset",
+    )
+    MAX_RETRIES = 3
+    for attempt in range(1, MAX_RETRIES + 1):
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0:
+            break
+        combined = result.stdout + result.stderr
+        is_transient = any(kw in combined for kw in _TRANSIENT_ERRORS)
+        if is_transient and attempt < MAX_RETRIES:
+            log(f"WARNING: Planetiler download failed (attempt {attempt}/{MAX_RETRIES}) — retrying in 60 s...")
+            time.sleep(60)
+        else:
+            break
 
     # Print filtered output (errors and completion messages only)
     for line in (result.stdout + result.stderr).splitlines():
