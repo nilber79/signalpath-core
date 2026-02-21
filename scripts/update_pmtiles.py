@@ -86,33 +86,38 @@ def download_pbf(url: str, dest: Path, cache_file: Path) -> Path:
 
 def run_planetiler(pbf_path: Path, area_name: str, output_file: Path):
     """Run the Planetiler Docker image to convert PBF → PMTiles."""
-    # Docker volume mounts require absolute paths — resolve() handles relative inputs
-    build_dir  = pbf_path.parent.resolve()
+    import tempfile
+
+    pbf_dir    = pbf_path.parent.resolve()     # read-only PBF cache location
     output_dir = output_file.parent.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    pbf_filename = pbf_path.name
+    pbf_filename    = pbf_path.name
     output_filename = output_file.name
 
     log("Converting PBF to PMTiles via Planetiler (this may take 2–10 minutes)...")
 
-    cmd = [
-        "docker", "run", "--rm",
-        "--label", "dockhand.notifications=false",
-        "--label", "dockhand.ignore=true",
-        "--label", "com.centurylinklabs.watchtower.enable=false",
-        "-v", f"{build_dir}:/data:ro",
-        "-v", f"{output_dir}:/output",
-        PLANETILER_IMAGE,
-        f"--osm-path=/data/{pbf_filename}",
-        f"--output=/output/{output_filename}",
-        f"--area={area_name}",
-        "--tmp=/tmp",       # use container's own /tmp; /data is mounted read-only
-        "--download",       # fetch any missing source files (lake_centerline, etc.)
-        "--force",
-    ]
+    # Planetiler writes downloaded source files (lake_centerline, etc.) to /data/sources
+    # and intermediate work to /data/tmp.  We give it a fresh writable temp directory
+    # as /data so those writes never touch the read-only PBF cache.
+    with tempfile.TemporaryDirectory() as planet_workdir:
+        cmd = [
+            "docker", "run", "--rm",
+            "--label", "dockhand.notifications=false",
+            "--label", "dockhand.ignore=true",
+            "--label", "com.centurylinklabs.watchtower.enable=false",
+            "-v", f"{pbf_dir}:/pbf:ro",        # PBF source file — read-only
+            "-v", f"{planet_workdir}:/data",   # Planetiler's writable working dir
+            "-v", f"{output_dir}:/output",
+            PLANETILER_IMAGE,
+            f"--osm-path=/pbf/{pbf_filename}",
+            f"--output=/output/{output_filename}",
+            f"--area={area_name}",
+            "--download",   # fetch missing sources (lake_centerline, etc.) into /data/sources
+            "--force",
+        ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True)
 
     # Print filtered output (errors and completion messages only)
     for line in (result.stdout + result.stderr).splitlines():
