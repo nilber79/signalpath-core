@@ -12,47 +12,115 @@ SignalPath: A community-sourced situational awareness tool for real-time road st
 - Nightly automatic road data refresh from OpenStreetMap
 - Self-contained Docker deployment (no external database server)
 
-## Deployment (Quick Start)
+## Deployment
 
-> **Prerequisites:** Docker and Docker Compose installed on your server.
+SignalPath runs as a single Docker container. There are two deployment scenarios —
+choose the one that matches your situation.
+
+### Which scenario am I?
+
+| Situation | Scenario |
+|---|---|
+| Fresh server, no other web services running, want the simplest possible setup | **Scenario A — Standalone** |
+| Server already runs other websites or has Caddy / Nginx / Traefik handling HTTPS | **Scenario B — Behind a Proxy** |
+
+---
+
+### Scenario A — Standalone (Recommended for new deployments)
+
+SignalPath handles everything itself: it serves the website, obtains a free HTTPS
+certificate from Let's Encrypt automatically, and renews it without any extra steps.
+
+**Prerequisites:** A Linux server with Docker and Docker Compose installed,
+and a domain name pointed at your server's IP address (e.g. `roadstatus.yourcounty.gov`).
 
 ```bash
-# 1. Pull the deployment files for your county
-curl -O https://raw.githubusercontent.com/philreblin/signalpath-core/main/deploy/docker-compose.yml
-curl -O https://raw.githubusercontent.com/philreblin/signalpath-core/main/deploy/.env.example
+# 1. Download the two config files
+curl -O https://raw.githubusercontent.com/nilber79/signalpath-core/main/deploy/docker-compose.yml
+curl -O https://raw.githubusercontent.com/nilber79/signalpath-core/main/deploy/.env.example
 
-# 2. Configure your deployment
+# 2. Create your local config file
 cp .env.example .env
-nano .env          # set DOMAIN, GHCR_ORG, COUNTY_TAG
+nano .env     # fill in the three values (see below)
 
-# 3. Start
+# 3. Start SignalPath
 docker compose up -d
 ```
 
-Your site will be live at `https://your.domain` with an automatic Let's Encrypt certificate.
-
-### Behind an Existing Reverse Proxy (Caddy, Nginx, Traefik)
-
-Use `docker-compose.proxy.yml` instead:
-
-```bash
-docker compose -f deploy/docker-compose.proxy.yml up -d
+**What to put in `.env`:**
+```env
+GHCR_ORG=nilber79                         # The GitHub org that published the image
+COUNTY_TAG=morgan-tn-latest               # Which county image to run
+DOMAIN=roadstatus.yourcounty.gov          # Your domain name (must point to this server)
 ```
 
-Then add a reverse proxy rule pointing to the `signalpath` container on port 80.
+SignalPath will be live at `https://your.domain` within a minute or two.
+The HTTPS certificate is obtained and renewed automatically — you do not need to
+configure certificates or ports manually.
 
-**Caddy example:**
+> **How ports work (Scenario A):** Port 80 and 443 are mapped directly from your
+> server to the container. Port 80 is used only to redirect visitors to HTTPS and
+> to complete the certificate verification process. Port 443 serves the actual
+> website over HTTPS. If anything else on your server is using port 80 or 443,
+> use Scenario B instead.
+
+---
+
+### Scenario B — Behind an Existing Reverse Proxy
+
+Use this if your server already runs Caddy, Nginx, Traefik, or another reverse
+proxy that handles HTTPS for all your websites. SignalPath runs as an ordinary
+HTTP service on your internal Docker network; your proxy routes traffic to it
+and handles the HTTPS certificate.
+
+```bash
+# 1. Download the proxy compose file
+curl -O https://raw.githubusercontent.com/nilber79/signalpath-core/main/deploy/docker-compose.proxy.yml
+curl -O https://raw.githubusercontent.com/nilber79/signalpath-core/main/deploy/.env.example
+
+# 2. Create your local config file
+cp .env.example .env
+nano .env     # fill in GHCR_ORG and COUNTY_TAG (DOMAIN is not used here)
+
+# 3. Start SignalPath
+docker compose -f docker-compose.proxy.yml up -d
+```
+
+Then add a rule to your proxy config pointing to the `signalpath` container.
+
+**Caddy example** (add to your existing `Caddyfile`):
 ```caddy
 roadstatus.yourcounty.gov {
     reverse_proxy signalpath:80
 }
 ```
 
+**Nginx example:**
+```nginx
+server {
+    listen 443 ssl;
+    server_name roadstatus.yourcounty.gov;
+    # ... your existing ssl_certificate lines ...
+
+    location / {
+        proxy_pass http://signalpath:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+> **How ports work (Scenario B):** The container only listens on port 80 inside
+> your server's private Docker network — this port is **never** exposed to the
+> internet. Your proxy container and the SignalPath container communicate privately
+> using the container name `signalpath` as the hostname. No port conflicts with
+> anything else running on your server.
+
 ## Available County Images
 
 | County | Image Tag |
 |---|---|
-| Morgan County, TN | `ghcr.io/philreblin/signalpath:morgan-tn-latest` |
+| Morgan County, TN | `ghcr.io/nilber79/signalpath:morgan-tn-latest` |
 
 ## Adding a New County
 
