@@ -100,7 +100,11 @@ def run_planetiler(pbf_path: Path, area_name: str, output_file: Path):
     # Planetiler writes downloaded source files (lake_centerline, etc.) to /data/sources
     # and intermediate work to /data/tmp.  We give it a fresh writable temp directory
     # as /data so those writes never touch the read-only PBF cache.
-    with tempfile.TemporaryDirectory() as planet_workdir:
+    # ignore_cleanup_errors=True: Planetiler runs as root inside Docker, so the files
+    # it creates (e.g. sources/lake_centerline.shp.zip) are root-owned and can't be
+    # deleted by the non-root GitHub Actions runner.  We suppress the cleanup error
+    # and let the runner clean up the workspace at job end.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as planet_workdir:
         cmd = [
             "docker", "run", "--rm",
             "--label", "dockhand.notifications=false",
