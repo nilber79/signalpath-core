@@ -53,7 +53,11 @@ SignalPath runs as a single Docker container — no external database server req
 
 ### Configuring `.env`
 
-Both scenarios use the same `.env` file. Copy `.env.example` to `.env` and fill in your values:
+Both scenarios read configuration from a `.env` file that must live in the **same directory
+as the compose file you downloaded**. Docker Compose automatically loads this file when you
+run `docker compose` — no extra steps are needed to connect them.
+
+Copy `.env.example` to `.env` and fill in your values:
 
 ```env
 GHCR_ORG=your-github-username            # Your GitHub username (the fork owner)
@@ -69,13 +73,15 @@ ADMIN_PASSWORD=your-strong-password-here # Password for /admin.php and /phplitea
 | `ADMIN_PASSWORD` | Required | Required |
 | `DOMAIN` | Required — set to your real hostname | Not used — leave blank or omit |
 
-> **What `DOMAIN` does (Scenario A):** FrankenPHP/Caddy reads `DOMAIN` as the hostname to
-> serve and obtain a Let's Encrypt certificate for. The domain must already point to your
-> server's public IP before you start the container.
+> **How `DOMAIN` reaches the container (Scenario A):** Docker Compose reads `DOMAIN` from
+> your `.env` file and passes it into the container as an environment variable called
+> `SERVER_NAME` — which is what FrankenPHP/Caddy reads to know what hostname to serve and
+> obtain a Let's Encrypt certificate for. The domain must already point to your server's
+> public IP before you start the container.
 >
-> **Scenario B note:** `SERVER_NAME: ":80"` (HTTP-only mode, no certificate) is already
-> set inside `docker-compose.proxy.yml` — you do not need to configure this yourself.
-> Your upstream proxy handles TLS; the container only speaks HTTP on your private Docker network.
+> **Scenario B note:** `docker-compose.proxy.yml` hardcodes `SERVER_NAME: ":80"` directly,
+> so no `.env` value is needed or consulted for this. HTTP-only mode means the container
+> never attempts to obtain a certificate; your upstream proxy handles TLS entirely.
 
 ---
 
