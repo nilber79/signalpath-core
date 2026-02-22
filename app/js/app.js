@@ -75,7 +75,8 @@
                     showMobileNotifications: false,
                     lastChangeId: 0, // Tracks SSE delta position
                     toasts: [], // Active foreground toast notifications
-                    areaConfig: null // Loaded from /area-config.json at startup
+                    areaConfig: null, // Loaded from /area-config.json at startup
+                    rebuildMeta: null  // Loaded from /api.php?action=get_metadata at startup
                 }
             },
             computed: {
@@ -176,6 +177,12 @@
                     this.areaConfig = { center: [0, 0], default_zoom: 10, proximity_radius_km: 80,
                                           pmtiles_file: 'map', contact_email: '' };
                 }
+
+                // Load rebuild metadata for admin dropdown stats (non-critical, fail silently)
+                fetch('/api.php?action=get_metadata')
+                    .then(r => r.json())
+                    .then(d => { if (d.success) this.rebuildMeta = d.metadata; })
+                    .catch(() => {});
 
                 this.initMap();
                 this.loadRoads();

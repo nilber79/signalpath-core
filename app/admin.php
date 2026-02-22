@@ -19,13 +19,13 @@ function h(string $s): string {
 $db_path    = __DIR__ . '/data/reports.db';
 $admin_pass = getenv('ADMIN_PASSWORD') ?: 'changeme';
 
-$county_cfg  = [];
-$cfg_file    = __DIR__ . '/county-config.json';
+$area_cfg   = [];
+$cfg_file   = __DIR__ . '/area-config.json';
 if (file_exists($cfg_file)) {
-    $county_cfg = json_decode(file_get_contents($cfg_file), true) ?? [];
+    $area_cfg = json_decode(file_get_contents($cfg_file), true) ?? [];
 }
-$county_name = $county_cfg['county_name'] ?? 'SignalPath';
-$county_state = $county_cfg['county_state'] ?? '';
+$county_name  = $area_cfg['area_name']  ?? 'SignalPath';
+$county_state = $area_cfg['area_state'] ?? '';
 
 // ── Authentication ────────────────────────────────────────────────────────
 
@@ -158,7 +158,8 @@ if ($action === 'remove_ip') {
 
 // ── Data ──────────────────────────────────────────────────────────────────
 
-$active_tab = in_array($_GET['tab'] ?? 'reports', ['reports', 'ip']) ? ($_GET['tab'] ?? 'reports') : 'reports';
+$active_tab = in_array($_GET['tab'] ?? 'reports', ['reports', 'ip', 'merge_issues'])
+    ? ($_GET['tab'] ?? 'reports') : 'reports';
 
 // Show reports from the last 30 days so admins can see recent history
 $reports = $pdo->query("
@@ -176,6 +177,26 @@ foreach ($reports as $r) {
 $ip_lists  = $pdo->query("SELECT * FROM ip_lists ORDER BY list_type, ip")->fetchAll();
 $whitelist = array_filter($ip_lists, fn($row) => $row['list_type'] === 'whitelist');
 $blacklist = array_filter($ip_lists, fn($row) => $row['list_type'] === 'blacklist');
+
+// Rebuild metadata from the SQLite metadata table
+$meta_rows = $pdo->query("SELECT key, value FROM metadata")->fetchAll();
+$rebuild_meta = [];
+foreach ($meta_rows as $row) {
+    $rebuild_meta[$row['key']] = $row['value'];
+}
+
+// Merge issues from the CSV file in the data directory
+$merge_issues       = [];
+$merge_issues_file  = __DIR__ . '/data/merge_issues.csv';
+if (file_exists($merge_issues_file) && ($fh = fopen($merge_issues_file, 'r')) !== false) {
+    $headers = fgetcsv($fh);
+    while (($row = fgetcsv($fh)) !== false) {
+        if ($headers && count($row) === count($headers)) {
+            $merge_issues[] = array_combine($headers, $row);
+        }
+    }
+    fclose($fh);
+}
 
 $status_labels = [
     'clear'         => 'Clear',
@@ -458,6 +479,70 @@ function is_active(string $ts): bool {
         }
         .btn-add:hover { background: #d97706; }
 
+        /* ── Rebuild stats panel ── */
+        .rebuild-stats-panel {
+            background: #fff;
+            border: 1px solid #e0ddd5;
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 1.25rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.25rem 2.5rem;
+        }
+        .rebuild-stat {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+        .rebuild-stat-label {
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #9ca3af;
+        }
+        .rebuild-stat-value {
+            font-size: 0.9375rem;
+            font-weight: 600;
+            color: #2a2622;
+        }
+        .rebuild-stat-sub {
+            font-size: 0.75rem;
+            color: #6b6660;
+        }
+
+        /* ── Merge issues table ── */
+        .merge-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+        .merge-table th {
+            text-align: left;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #6b6660;
+            padding: 0.5rem 0.75rem;
+            background: #f8f6f2;
+            border-bottom: 1px solid #e0ddd5;
+        }
+        .merge-table td {
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid #f0ede8;
+            vertical-align: top;
+            word-break: break-word;
+        }
+        .merge-table tr:last-child td { border-bottom: none; }
+        .merge-table-wrap {
+            border: 1px solid #e0ddd5;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #fff;
+        }
+        .merge-issues-note {
+            font-size: 0.8125rem;
+            color: #6b6660;
+            margin-top: 0.75rem;
+        }
+
         /* ── Misc ── */
         .empty-state { text-align: center; padding: 3rem 1rem; color: #9ca3af; }
         .whitelist-badge { color: #059669; font-weight: 600; }
@@ -494,11 +579,50 @@ function is_active(string $ts): bool {
     <a class="tab <?= $active_tab === 'ip' ? 'active' : '' ?>" href="admin.php?tab=ip">
         IP Access Lists
     </a>
+    <a class="tab <?= $active_tab === 'merge_issues' ? 'active' : '' ?>" href="admin.php?tab=merge_issues">
+        Merge Issues<?php if (count($merge_issues) > 0): ?> <span class="count-badge"><?= count($merge_issues) ?></span><?php endif; ?>
+    </a>
 </nav>
 
 <div class="content">
 
 <?php if ($active_tab === 'reports'): ?>
+
+    <?php if (!empty($rebuild_meta)): ?>
+    <div class="rebuild-stats-panel">
+        <?php if (!empty($rebuild_meta['last_rebuild'])): ?>
+        <div class="rebuild-stat">
+            <span class="rebuild-stat-label">Last rebuild</span>
+            <span class="rebuild-stat-value"><?= h(date('M j, Y', strtotime($rebuild_meta['last_rebuild']))) ?></span>
+            <span class="rebuild-stat-sub"><?= h(date('g:i A', strtotime($rebuild_meta['last_rebuild']))) ?> UTC</span>
+        </div>
+        <?php endif; ?>
+        <?php if (isset($rebuild_meta['road_count'])): ?>
+        <div class="rebuild-stat">
+            <span class="rebuild-stat-label">Roads</span>
+            <span class="rebuild-stat-value"><?= h(number_format((int)$rebuild_meta['road_count'])) ?></span>
+        </div>
+        <?php endif; ?>
+        <?php if (isset($rebuild_meta['merge_issues_count'])): ?>
+        <div class="rebuild-stat">
+            <span class="rebuild-stat-label">Merge issues</span>
+            <span class="rebuild-stat-value">
+                <?php if ((int)$rebuild_meta['merge_issues_count'] > 0): ?>
+                    <a href="admin.php?tab=merge_issues" style="color:#d97706"><?= h($rebuild_meta['merge_issues_count']) ?></a>
+                <?php else: ?>
+                    0
+                <?php endif; ?>
+            </span>
+        </div>
+        <?php endif; ?>
+        <?php if (!empty($rebuild_meta['osm_timestamp'])): ?>
+        <div class="rebuild-stat">
+            <span class="rebuild-stat-label">OSM data as of</span>
+            <span class="rebuild-stat-value"><?= h(date('M j, Y', strtotime($rebuild_meta['osm_timestamp']))) ?></span>
+        </div>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
 
     <div class="section-heading">
         Reports
@@ -562,6 +686,45 @@ function is_active(string $ts): bool {
                 <?php endforeach; ?>
             </div>
         <?php endforeach; ?>
+    <?php endif; ?>
+
+<?php elseif ($active_tab === 'merge_issues'): ?>
+
+    <div class="section-heading">
+        Merge Issues
+        <?php if (count($merge_issues) > 0): ?>
+            <span class="count-badge"><?= count($merge_issues) ?></span>
+        <?php endif; ?>
+    </div>
+
+    <?php if (empty($merge_issues)): ?>
+        <div class="empty-state">No merge issues from the last rebuild.</div>
+    <?php else: ?>
+        <div class="merge-table-wrap">
+            <table class="merge-table">
+                <thead>
+                    <tr>
+                        <?php foreach (array_keys($merge_issues[0]) as $col): ?>
+                            <th><?= h(ucwords(str_replace('_', ' ', $col))) ?></th>
+                        <?php endforeach; ?>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($merge_issues as $row): ?>
+                        <tr>
+                            <?php foreach ($row as $val): ?>
+                                <td><?= h($val) ?></td>
+                            <?php endforeach; ?>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <p class="merge-issues-note">
+            Merge issues occur when two or more disconnected segments share a road name but could
+            not be joined into a single geometry. Each entry above is treated as a separate road.
+            They are usually caused by missing OSM nodes at intersections.
+        </p>
     <?php endif; ?>
 
 <?php elseif ($active_tab === 'ip'): ?>

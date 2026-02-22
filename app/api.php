@@ -245,6 +245,16 @@ function checkRateLimit($action) {
 
 try {
     switch ($action) {
+        case 'get_metadata':
+            $db = getDb();
+            $rows = $db->query("SELECT key, value FROM metadata")->fetchAll(PDO::FETCH_ASSOC);
+            $meta = [];
+            foreach ($rows as $row) {
+                $meta[$row['key']] = $row['value'];
+            }
+            echo json_encode(['success' => true, 'metadata' => $meta]);
+            break;
+
         case 'get_reports':
             $db = getDb();
             $stmt = $db->query("SELECT * FROM reports WHERE timestamp > datetime('now', '-3 days') ORDER BY timestamp DESC");

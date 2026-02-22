@@ -485,31 +485,18 @@ def write_outputs(optimized: list, merge_issues: list, osm_ts: str,
     elif issues_csv.exists():
         issues_csv.unlink()
 
-    # Update SQLite metadata (if reports.db exists alongside the output)
-    db_path = output_dir / "reports.db"
-    if db_path.exists():
-        try:
-            con = sqlite3.connect(str(db_path))
-            con.execute("PRAGMA journal_mode=WAL")
-            con.execute("""
-                CREATE TABLE IF NOT EXISTS metadata (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL,
-                    updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-                )""")
-            now = datetime.now(timezone.utc).isoformat()
-            for key, val in [("data_source", data_source),
-                              ("last_rebuild", now),
-                              ("road_count", str(len(optimized))),
-                              ("merge_issues_count", str(len(merge_issues)))]:
-                con.execute(
-                    "INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?,?,?)",
-                    (key, val, now))
-            con.commit()
-            con.close()
-            log("Updated SQLite metadata")
-        except Exception as exc:
-            log(f"WARNING: Could not update metadata in reports.db: {exc}")
+    # rebuild_metadata.json — baked into the image, copied to the data volume
+    # by entrypoint.sh on every container start, then written to the metadata
+    # SQLite table so admin.php and api.php can read it.
+    metadata = {
+        "last_rebuild":       datetime.now(timezone.utc).isoformat(),
+        "road_count":         len(optimized),
+        "merge_issues_count": len(merge_issues),
+        "data_source":        data_source,
+        "osm_timestamp":      osm_ts,
+    }
+    (output_dir / "rebuild_metadata.json").write_text(json.dumps(metadata, indent=2))
+    log("Wrote rebuild_metadata.json")
 
 
 def fetch_boundary(cfg: dict, output_dir: Path):

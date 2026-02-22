@@ -1780,6 +1780,30 @@
     flex: 1;
 }
 
+/* Rebuild stats block inside admin dropdown */
+.dropdown-rebuild-stats {
+    margin-top: 0.875rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--color-border);
+}
+.rebuild-stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 0.75rem;
+    padding: 0.2rem 0;
+    color: var(--color-text-secondary);
+}
+.rebuild-stat-label {
+    font-weight: 500;
+}
+.rebuild-stat-value {
+    font-variant-numeric: tabular-nums;
+}
+.mobile-rebuild-stats {
+    margin: 0.5rem 1rem 0.75rem;
+}
+
 /* Mobile adjustments for info dropdown */
 @media (max-width: 768px) {
     .info-dropdown {

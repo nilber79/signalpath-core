@@ -190,6 +190,20 @@
                                     <span>Database</span>
                                 </a>
                             </div>
+                            <div v-if="rebuildMeta" class="dropdown-rebuild-stats">
+                                <div class="rebuild-stat-row">
+                                    <span class="rebuild-stat-label">Last rebuild</span>
+                                    <span class="rebuild-stat-value">{{ new Date(rebuildMeta.last_rebuild).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}) }}</span>
+                                </div>
+                                <div class="rebuild-stat-row">
+                                    <span class="rebuild-stat-label">Roads</span>
+                                    <span class="rebuild-stat-value">{{ rebuildMeta.road_count }}</span>
+                                </div>
+                                <div class="rebuild-stat-row">
+                                    <span class="rebuild-stat-label">Merge issues</span>
+                                    <span class="rebuild-stat-value">{{ rebuildMeta.merge_issues_count }}</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -263,6 +277,20 @@
                             <span>🗄️</span>
                             Database
                         </a>
+                    </div>
+                    <div v-if="rebuildMeta" class="dropdown-rebuild-stats mobile-rebuild-stats">
+                        <div class="rebuild-stat-row">
+                            <span class="rebuild-stat-label">Last rebuild</span>
+                            <span class="rebuild-stat-value">{{ new Date(rebuildMeta.last_rebuild).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}) }}</span>
+                        </div>
+                        <div class="rebuild-stat-row">
+                            <span class="rebuild-stat-label">Roads</span>
+                            <span class="rebuild-stat-value">{{ rebuildMeta.road_count }}</span>
+                        </div>
+                        <div class="rebuild-stat-row">
+                            <span class="rebuild-stat-label">Merge issues</span>
+                            <span class="rebuild-stat-value">{{ rebuildMeta.merge_issues_count }}</span>
+                        </div>
                     </div>
                 </div>
                 <button v-if="notificationsSupported" class="mobile-menu-item" @click="toggleMobileNotifications">

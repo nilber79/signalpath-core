@@ -16,7 +16,7 @@ IMAGE_ROADS="/image-roads"
 mkdir -p "$DATA_DIR"
 
 # Always overwrite roads data from the baked-in image copy
-for f in roads_optimized.json roads_optimized.jsonl area_boundary_geojson.json; do
+for f in roads_optimized.json roads_optimized.jsonl area_boundary_geojson.json rebuild_metadata.json merge_issues.csv; do
     if [ -f "$IMAGE_ROADS/$f" ]; then
         cp "$IMAGE_ROADS/$f" "$DATA_DIR/$f"
     fi
@@ -101,6 +101,24 @@ if [ ! -f "$DATA_DIR/reports.db" ]; then
 echo \"Schema initialised.\\n\";
 "
     echo "[entrypoint] reports.db ready"
+fi
+
+# Write rebuild metadata from the baked-in JSON into the SQLite metadata table.
+# Runs on every container start so the table stays current when a new image is pulled.
+if [ -f "$DATA_DIR/rebuild_metadata.json" ]; then
+    php -r "
+\$meta = json_decode(file_get_contents('$DATA_DIR/rebuild_metadata.json'), true);
+if (\$meta) {
+    \$db = new PDO('sqlite:$DATA_DIR/reports.db');
+    \$db->exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;');
+    \$now = gmdate('Y-m-d\TH:i:s.000Z');
+    \$stmt = \$db->prepare('INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, ?)');
+    foreach (\$meta as \$k => \$v) {
+        \$stmt->execute([\$k, (string)\$v, \$now]);
+    }
+    echo \"[entrypoint] Rebuild metadata written to reports.db.\\n\";
+}
+"
 fi
 
 # Configure phpLiteAdmin with the ADMIN_PASSWORD env var and the correct DB path.
