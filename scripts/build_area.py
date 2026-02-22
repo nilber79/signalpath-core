@@ -27,13 +27,21 @@ def _full_title(cfg):
     return f"SignalPath \u2013 {cfg["area"]['name']}, {cfg["area"]['state']}"
 
 
+def _github_link(cfg):
+    url = cfg["app"].get("github_url", "")
+    if not url:
+        return ""
+    return f' &ensp;&middot;&ensp; <a href="{url}" target="_blank" rel="noopener">GitHub</a>'
+
+
 PLACEHOLDER_MAP = {
     "SIGNALPATH_TITLE":          _full_title,
     "SIGNALPATH_SUBTITLE":       lambda cfg: cfg["app"].get("subtitle", "Realtime, community-sourced, road status"),
     "SIGNALPATH_CONTACT_EMAIL":  lambda cfg: cfg["app"]["contact_email"],
+    "SIGNALPATH_GITHUB_LINK":    _github_link,
     "SIGNALPATH_OWNER_NAME":     lambda cfg: cfg["app"]["owner_name"],
     "SIGNALPATH_COPYRIGHT_YEAR": lambda cfg: str(cfg["app"]["copyright_year"]),
-    "SIGNALPATH_AREA_NAME":   lambda cfg: f"{cfg["area"]['name']}, {cfg["area"]['state']}",
+    "SIGNALPATH_AREA_NAME":      lambda cfg: f"{cfg['area']['name']}, {cfg['area']['state']}",
 }
 
 
@@ -66,8 +74,9 @@ def main():
         "title":                _full_title(cfg),
         "subtitle":             cfg["app"].get("subtitle", "Realtime, community-sourced, road status"),
         "contact_email":        cfg["app"]["contact_email"],
-        "area_name":          cfg["area"]["name"],
-        "area_state":         cfg["area"]["state"],
+        "github_url":           cfg["app"].get("github_url", ""),
+        "area_name":            cfg["area"]["name"],
+        "area_state":           cfg["area"]["state"],
     }
 
     out_json = web_root / "area-config.json"

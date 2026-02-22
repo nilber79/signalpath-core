@@ -16,7 +16,7 @@ IMAGE_ROADS="/image-roads"
 mkdir -p "$DATA_DIR"
 
 # Always overwrite roads data from the baked-in image copy
-for f in roads_optimized.json roads_optimized.jsonl; do
+for f in roads_optimized.json roads_optimized.jsonl area_boundary_geojson.json; do
     if [ -f "$IMAGE_ROADS/$f" ]; then
         cp "$IMAGE_ROADS/$f" "$DATA_DIR/$f"
     fi
@@ -109,10 +109,11 @@ if [ -f "/app/public/phpliteadmin.php" ]; then
     php -r "
 \$file = '/app/public/phpliteadmin.php';
 \$content = file_get_contents(\$file);
-// Set password (phpLiteAdmin 1.9.x compares sha1 of submitted password vs stored value)
+// pla-ng bcrypt-compares the submitted password directly against SYSTEMPASSWORD,
+// so store the plaintext ADMIN_PASSWORD (pla-ng handles its own hashing internally).
 \$pass = getenv('ADMIN_PASSWORD') ?: 'changeme';
-\$hash = sha1(\$pass);
-\$content = preg_replace('/^\\\$password\s*=\s*[^\n]+;/m', '\\\$password = \\'' . \$hash . '\\';', \$content, 1);
+\$pass_escaped = str_replace([\"'\", '\\\\'], [\"\\\\'\", '\\\\\\\\'], \$pass);
+\$content = preg_replace('/^\\\$password\s*=\s*[^\n]+;/m', '\\\$password = \\'' . \$pass_escaped . '\\';', \$content, 1);
 // Point phpLiteAdmin at the data directory where reports.db lives
 \$content = preg_replace('/^\\\$directory\s*=\s*[^\n]+;/m', '\\\$directory = \\'/app/public/data\\';', \$content, 1);
 file_put_contents(\$file, \$content);

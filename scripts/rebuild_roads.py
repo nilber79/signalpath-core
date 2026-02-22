@@ -29,7 +29,8 @@ from collections import defaultdict
 try:
     import requests
     import yaml
-    from shapely.geometry import LineString
+    from shapely.geometry import LineString, mapping
+    from shapely.ops import linemerge, polygonize
     from pyproj import Geod
 except ImportError as e:
     print(f"ERROR: Missing dependency — {e}", file=sys.stderr)
@@ -511,6 +512,71 @@ def write_outputs(optimized: list, merge_issues: list, osm_ts: str,
             log(f"WARNING: Could not update metadata in reports.db: {exc}")
 
 
+def fetch_boundary(cfg: dict, output_dir: Path):
+    """
+    Fetch the area boundary polygon from the Overpass API and write
+    area_boundary_geojson.json.  Used by the app to draw the county outline.
+    Failures are non-fatal: a warning is logged and the file is left absent.
+    """
+    relation_id = cfg["area"]["osm_relation_id"]
+    overpass_url = cfg["data"]["overpass_url"]
+
+    query = f"""[out:json][timeout:60];
+relation({relation_id});
+out geom;"""
+
+    log(f"Fetching area boundary (relation {relation_id})...")
+    try:
+        resp = requests.post(
+            overpass_url,
+            data={"data": query},
+            timeout=90,
+            headers={"User-Agent": "SignalPath/1.0 road-status-app"},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        elements = data.get("elements", [])
+        if not elements:
+            log("WARNING: No elements returned for boundary relation — outline will be absent")
+            return
+
+        relation = elements[0]
+        members  = relation.get("members", [])
+
+        # Collect all outer ring way geometries (role "outer" or empty)
+        lines = []
+        for member in members:
+            if member.get("type") == "way" and member.get("role") in ("outer", ""):
+                geom = member.get("geometry", [])
+                if len(geom) >= 2:
+                    lines.append(LineString([(pt["lon"], pt["lat"]) for pt in geom]))
+
+        if not lines:
+            log("WARNING: No outer ring geometry in boundary relation — outline will be absent")
+            return
+
+        merged   = linemerge(lines)
+        polygons = list(polygonize(merged))
+        if not polygons:
+            log("WARNING: Could not assemble boundary polygon — outline will be absent")
+            return
+
+        # Use the largest polygon (county outline)
+        polygon = max(polygons, key=lambda p: p.area)
+        geojson = {
+            "type": "FeatureCollection",
+            "features": [{"type": "Feature", "geometry": mapping(polygon), "properties": {}}],
+        }
+
+        boundary_path = output_dir / "area_boundary_geojson.json"
+        boundary_path.write_text(json.dumps(geojson))
+        log(f"Wrote area_boundary_geojson.json")
+
+    except Exception as exc:
+        log(f"WARNING: Could not fetch area boundary: {exc} — outline will be absent")
+
+
 def main():
     parser = argparse.ArgumentParser(description="SignalPath road data rebuild script")
     parser.add_argument("config", help="Path to area config.yaml")
@@ -539,6 +605,7 @@ def main():
     optimized, merge_issues, osm_ts = process(cfg, raw_data, output_dir)
 
     write_outputs(optimized, merge_issues, osm_ts, data_source, output_dir, cfg)
+    fetch_boundary(cfg, output_dir)
 
     log(f"Rebuild complete — {len(optimized)} roads written")
 

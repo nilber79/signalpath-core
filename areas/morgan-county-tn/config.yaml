@@ -16,7 +16,8 @@ area:
 app:
   # title is auto-generated as "SignalPath – {area.name}, {area.state}"
   subtitle: "Realtime, community-sourced, road status"
-  contact_email: "moco.tn.road.status@reblin.us"
+  contact_email: "signalpath@reblin.us"
+  github_url: "https://github.com/nilber79/signalpath-core"
   owner_name: "Phillip Reblin"
   copyright_year: "2026"
 
