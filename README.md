@@ -10,6 +10,7 @@ SignalPath: A community-sourced situational awareness tool for real-time road st
 - Server-Sent Events (SSE) for live updates
 - Toast and browser notifications for new blocked-road reports
 - Nightly automatic road data refresh from OpenStreetMap
+- Automatic container updates via Watchtower (no manual update steps)
 - Self-contained Docker deployment (no external database server)
 
 ---
@@ -140,6 +141,33 @@ server {
 > internet. Your proxy container and the SignalPath container communicate privately
 > using the container name `signalpath` as the hostname. No port conflicts with
 > anything else running on your server.
+
+---
+
+## Automatic Updates (Watchtower)
+
+Both compose files include **[Watchtower](https://containrrr.dev/watchtower/)**, which
+monitors the SignalPath container and automatically pulls and restarts it whenever a new
+image is published to GHCR.
+
+This is what keeps your road and map data current: every night GitHub Actions rebuilds
+the image with fresh OpenStreetMap road data and (when changed) updated PMTiles. Watchtower
+checks for a new image every hour, so your site will be running the latest data within an
+hour of the nightly build completing — no manual steps required.
+
+Watchtower is configured to watch **only the `signalpath` container** (not everything on
+your server) and will perform a graceful restart, which typically takes only a few seconds.
+
+> **Note on downtime:** When Watchtower pulls a new image and restarts the container,
+> the site is briefly unavailable (usually under 10 seconds). This happens in the early
+> morning hours, well before peak usage. Road condition reports stored in the database
+> volume are never affected by image updates.
+
+If you prefer to control updates manually and disable Watchtower, remove or comment out
+the `watchtower:` service block from your compose file. You can then update on demand with:
+```bash
+docker compose pull && docker compose up -d
+```
 
 ---
 

@@ -26,6 +26,16 @@ services:
     networks:
       - proxy-net   # Change this to match your proxy's network name
 
+  # Watchtower automatically pulls and restarts SignalPath whenever a new
+  # nightly image is published to GHCR — no manual update steps required.
+  watchtower:
+    image: containrrr/watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Check for a new image every hour; only watch the signalpath container.
+    command: --interval 3600 signalpath
+
 volumes:
   signalpath-db:
 
