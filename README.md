@@ -1,6 +1,6 @@
 <img src="app/favicon.svg" width="128" />
 
-SignalPath: A community-sourced situational awareness tool for real-time road status and emergency navigation. Report blocked roads, snow/ice conditions, and other hazards — and see what your neighbours are reporting in real time.
+SignalPath: A community-sourced situational awareness tool for real-time road status and emergency navigation. Report blocked roads, snow/ice conditions, and other hazards — and see what your neighbors are reporting in real time.
 
 ## Features
 
@@ -54,7 +54,7 @@ SignalPath runs as a single Docker container — no external database server req
 ### Configuring `.env`
 
 Both scenarios read configuration from a `.env` file that must live in the **same directory
-as the compose file you downloaded**. Docker Compose automatically loads this file when you
+as the compose file you download in the next section**. Docker Compose automatically loads this file when you
 run `docker compose` — no extra steps are needed to connect them.
 
 Copy `.env.example` to `.env` and fill in your values:
@@ -91,7 +91,7 @@ SignalPath handles everything itself: it serves the website, obtains a free HTTP
 certificate from Let's Encrypt automatically, and renews it without any extra steps.
 
 **Prerequisites:** A Linux server with Docker and Docker Compose installed,
-and a domain name pointed at your server's IP address (e.g. `roadstatus.yourcounty.gov`).
+and a domain name pointed at your server's IP address (e.g. `signalpath.your-area.gov`).
 
 ```bash
 # 1. Download the two config files
@@ -142,7 +142,7 @@ Then add a rule to your proxy config pointing to the `signalpath` container.
 
 **Caddy example** (add to your existing `Caddyfile`):
 ```caddy
-roadstatus.yourcounty.gov {
+signalpath.your-area.gov {
     reverse_proxy signalpath:80
 }
 ```
@@ -151,7 +151,7 @@ roadstatus.yourcounty.gov {
 ```nginx
 server {
     listen 443 ssl;
-    server_name roadstatus.yourcounty.gov;
+    server_name signalpath.your-area.gov;
     # ... your existing ssl_certificate lines ...
 
     location / {
