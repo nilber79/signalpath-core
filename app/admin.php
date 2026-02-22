@@ -52,6 +52,8 @@ if (empty($_SESSION['sp_admin'])) {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Admin Login — SignalPath</title>
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="shortcut icon" href="/favicon.ico">
         <style>
             body { font-family: 'DM Sans', sans-serif; background: #f8f6f2; display: flex;
                    align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
@@ -202,6 +204,8 @@ function is_active(string $ts): bool {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Admin — <?= h($county_name) ?> | SignalPath</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="shortcut icon" href="/favicon.ico">
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -223,6 +227,17 @@ function is_active(string $ts): bool {
         .admin-header-brand { font-size: 1.1rem; font-weight: 700; }
         .admin-header-brand span { color: #d97706; }
         .admin-header-sub { font-size: 0.8125rem; color: #9ca3af; margin-top: 0.125rem; }
+        .admin-header-actions { display: flex; align-items: center; gap: 0.75rem; }
+        .btn-back {
+            background: transparent;
+            border: 1px solid rgba(255,255,255,.3);
+            color: #f8f6f2;
+            padding: 0.4rem 1rem;
+            border-radius: 6px;
+            font-size: 0.8125rem;
+            text-decoration: none;
+        }
+        .btn-back:hover { background: rgba(255,255,255,.1); color: #f8f6f2; }
         .btn-logout {
             background: transparent;
             border: 1px solid rgba(255,255,255,.3);
@@ -464,9 +479,12 @@ function is_active(string $ts): bool {
         <div class="admin-header-brand"><span>SignalPath</span> Admin</div>
         <div class="admin-header-sub"><?= h($county_name) ?><?= $county_state ? ', ' . h($county_state) : '' ?></div>
     </div>
-    <form method="post">
-        <button class="btn-logout" name="logout" value="1">Sign out</button>
-    </form>
+    <div class="admin-header-actions">
+        <a class="btn-back" href="/">← Map</a>
+        <form method="post">
+            <button class="btn-logout" name="logout" value="1">Sign out</button>
+        </form>
+    </div>
 </header>
 
 <nav class="tabs">

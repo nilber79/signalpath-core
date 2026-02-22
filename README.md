@@ -1,4 +1,4 @@
-<img src="logo.svg" width="128" />
+<img src="app/favicon.svg" width="128" />
 
 SignalPath: A community-sourced situational awareness tool for real-time road status and emergency navigation. Report blocked roads, snow/ice conditions, and other hazards — and see what your neighbours are reporting in real time.
 

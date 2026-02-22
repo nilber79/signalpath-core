@@ -6,7 +6,11 @@
     <title>SIGNALPATH_TITLE</title>
 
     <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href="/logo.svg">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png">
+    <link rel="shortcut icon" href="/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/site.webmanifest">
 
     <!-- Critical: Prevent flash of Vue templates before initialization -->
     <style>
@@ -29,7 +33,7 @@
         <header class="modern-header">
             <div class="header-left">
                 <div class="header-brand">
-                    <img src="/logo.svg" alt="SignalPath" class="header-logo" />
+                    <img src="/favicon.svg" alt="SignalPath" class="header-logo" />
                     <div class="header-text">
                         <h1 class="header-title">SIGNALPATH_TITLE</h1>
                         <p class="subtitle">SIGNALPATH_SUBTITLE</p>
@@ -174,14 +178,14 @@
                             <path d="M6 9L1 4h10z"/>
                         </svg>
                     </span>
-                    <div class="nav-dropdown" :class="{ active: showAdminDropdown }">
+                    <div class="nav-dropdown admin-dropdown" :class="{ active: showAdminDropdown }">
                         <div class="dropdown-content">
                             <div class="dropdown-actions">
                                 <a class="dropdown-action-btn" href="/admin.php">
                                     <span class="dropdown-action-icon">📋</span>
                                     <span>Report Management</span>
                                 </a>
-                                <a class="dropdown-action-btn" href="/phpliteadmin.php">
+                                <a class="dropdown-action-btn" href="/phpliteadmin.php" target="_blank" rel="noopener">
                                     <span class="dropdown-action-icon">🗄️</span>
                                     <span>Database</span>
                                 </a>
@@ -255,7 +259,7 @@
                             <span>📋</span>
                             Report Management
                         </a>
-                        <a class="mobile-info-btn" href="/phpliteadmin.php">
+                        <a class="mobile-info-btn" href="/phpliteadmin.php" target="_blank" rel="noopener">
                             <span>🗄️</span>
                             Database
                         </a>

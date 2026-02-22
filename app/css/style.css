@@ -1788,6 +1788,23 @@
     }
 }
 
+/* Admin Dropdown — right-aligned because it is the rightmost nav item */
+.admin-dropdown {
+    left: auto;
+    right: 0;
+    transform: translateY(-8px);
+}
+
+.admin-dropdown.active {
+    transform: translateY(0);
+}
+
+.admin-dropdown::before {
+    left: auto;
+    right: 1rem;
+    transform: none;
+}
+
 /* ===== Mobile Menu ===== */
 .mobile-menu-overlay {
     display: none;
