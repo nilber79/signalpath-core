@@ -189,8 +189,8 @@ foreach ($meta_rows as $row) {
 $merge_issues       = [];
 $merge_issues_file  = __DIR__ . '/data/merge_issues.csv';
 if (file_exists($merge_issues_file) && ($fh = fopen($merge_issues_file, 'r')) !== false) {
-    $headers = fgetcsv($fh);
-    while (($row = fgetcsv($fh)) !== false) {
+    $headers = fgetcsv($fh, 0, ',', '"', '\\');
+    while (($row = fgetcsv($fh, 0, ',', '"', '\\')) !== false) {
         if ($headers && count($row) === count($headers)) {
             $merge_issues[] = array_combine($headers, $row);
         }
