@@ -146,9 +146,9 @@ server {
 
 ## Automatic Updates (Watchtower)
 
-Both compose files include **[Watchtower](https://containrrr.dev/watchtower/)**, which
-monitors the SignalPath container and automatically pulls and restarts it whenever a new
-image is published to GHCR.
+Both compose files include **[Watchtower](https://github.com/nickfedor/watchtower)**
+(`nickfedor/watchtower`, the actively maintained fork), which monitors the SignalPath
+container and automatically pulls and restarts it whenever a new image is published to GHCR.
 
 This is what keeps your road and map data current: every night GitHub Actions rebuilds
 the image with fresh OpenStreetMap road data and (when changed) updated PMTiles. Watchtower
@@ -206,7 +206,7 @@ cover. The database is pre-selected automatically.
 
 | Area | Image Tag |
 |---|---|
-| Morgan County, TN | `ghcr.io/nilber79/signalpath:morgan-tn-latest` |
+| Morgan County, TN | `ghcr.io/nilber79/signalpath:morgan-county-tn-latest` |
 
 ## Architecture
 
