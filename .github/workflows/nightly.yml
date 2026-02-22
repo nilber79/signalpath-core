@@ -77,7 +77,6 @@ jobs:
           date=$(curl -sI "$url" | grep -i last-modified | sed 's/.*: //' | tr -d '\r')
           echo "date=$date" >> $GITHUB_OUTPUT
 
-      # PMTiles are skipped when the Geofabrik PBF has not changed since the last run
       - name: Cache Geofabrik PBF
         uses: actions/cache@v4
         with:
@@ -86,7 +85,17 @@ jobs:
           restore-keys: |
             geofabrik-${{ matrix.area }}-
 
+      # Cache the PMTiles output by PBF date — if the Geofabrik data hasn't
+      # changed since the last build, skip Planetiler entirely.
+      - name: Cache PMTiles output
+        id: tiles-cache
+        uses: actions/cache@v4
+        with:
+          path: build-output/tiles/
+          key: pmtiles-${{ matrix.area }}-${{ steps.pbf-date.outputs.date }}
+
       - name: Update PMTiles
+        if: steps.tiles-cache.outputs.cache-hit != 'true'
         run: |
           python scripts/update_pmtiles.py \
             areas/${{ matrix.area }}/config.yaml \
