@@ -24,6 +24,15 @@ done
 
 echo "[entrypoint] Roads data ready in $DATA_DIR"
 
+# Restore from Litestream replica before schema init so a VPS restore gets
+# current data rather than starting from a blank schema.
+# -if-replica-exists makes this a no-op on first run when nothing has been
+# pushed yet, so it is safe to run unconditionally when credentials are set.
+if [ -n "${LITESTREAM_ACCESS_KEY_ID}" ] && [ -n "${LITESTREAM_SECRET_ACCESS_KEY}" ] && [ -n "${LITESTREAM_BUCKET}" ]; then
+    echo "[entrypoint] Litestream: restoring from replica (no-op if none exists yet)..."
+    litestream restore -config /etc/litestream.yml -if-replica-exists "$DATA_DIR/reports.db"
+fi
+
 # Initialise SQLite schema on first run
 if [ ! -f "$DATA_DIR/reports.db" ]; then
     echo "[entrypoint] Initialising reports.db schema..."
@@ -139,4 +148,12 @@ echo \"[entrypoint] phpLiteAdmin configured.\\n\";
 "
 fi
 
-exec "$@"
+# Start FrankenPHP — wrapped in Litestream replication when credentials are set,
+# plain otherwise.  The same image works in both modes.
+if [ -n "${LITESTREAM_ACCESS_KEY_ID}" ] && [ -n "${LITESTREAM_SECRET_ACCESS_KEY}" ] && [ -n "${LITESTREAM_BUCKET}" ]; then
+    echo "[entrypoint] Litestream: starting replication..."
+    exec litestream replicate -config /etc/litestream.yml \
+        -exec "frankenphp run --config /etc/caddy/Caddyfile"
+else
+    exec "$@"
+fi

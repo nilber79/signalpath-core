@@ -11,6 +11,22 @@ FROM dunglas/frankenphp:php8.4
 # Install pdo_sqlite (required for reports.db)
 RUN install-php-extensions pdo_sqlite
 
+# Install Litestream for SQLite replication to S3/R2.
+# Static binary — no runtime deps.  The entrypoint wraps FrankenPHP with
+# litestream replicate when LITESTREAM_* env vars are present; if they are
+# absent the image runs without replication (dev / simple deployments).
+ARG LITESTREAM_VERSION=v0.3.13
+RUN apt-get update && apt-get install -y --no-install-recommends wget \
+    && wget -q -O /tmp/litestream.tar.gz \
+        "https://github.com/benbjohnson/litestream/releases/download/${LITESTREAM_VERSION}/litestream-${LITESTREAM_VERSION}-linux-amd64.tar.gz" \
+    && tar -xzf /tmp/litestream.tar.gz -C /usr/local/bin \
+    && rm /tmp/litestream.tar.gz \
+    && apt-get purge -y wget && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+
+# Litestream config — uses env vars at runtime for credentials and bucket name
+COPY docker/litestream.yml /etc/litestream.yml
+
 # Copy app source files into the FrankenPHP public root.
 # Remove the default FrankenPHP demo index.php (ships in the base image at
 # /app/public/index.php) — otherwise php_server serves it instead of index.html.
