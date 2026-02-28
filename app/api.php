@@ -11,26 +11,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit(0);
 }
 
+require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/auth/auth.php';
+
 $dataDir = __DIR__ . '/data';
 $cacheFile = $dataDir . '/roads_optimized.json';
 
 if (!file_exists($dataDir)) {
     @mkdir($dataDir, 0755, true);
-}
-
-/**
- * Get SQLite database connection (singleton)
- */
-function getDb() {
-    static $db = null;
-    if ($db === null) {
-        $dbPath = __DIR__ . '/data/reports.db';
-        $db = new PDO('sqlite:' . $dbPath);
-        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        $db->exec('PRAGMA journal_mode=WAL');
-        $db->exec('PRAGMA busy_timeout=5000');
-    }
-    return $db;
 }
 
 /**
@@ -245,6 +233,49 @@ function checkRateLimit($action) {
 
 try {
     switch ($action) {
+        case 'auth_check':
+            // Returns current user info (or null) — used by the frontend on load
+            $user = getCurrentUser();
+            if ($user) {
+                echo json_encode([
+                    'success'  => true,
+                    'user'     => [
+                        'id'           => (int)$user['id'],
+                        'username'     => $user['username'],
+                        'display_name' => $user['display_name'] ?? $user['username'],
+                        'role'         => $user['role'],
+                    ],
+                ]);
+            } else {
+                echo json_encode(['success' => true, 'user' => null]);
+            }
+            break;
+
+        case 'get_prefs':
+            // Returns saved notification preferences for the current user (null if not logged in)
+            $user = getCurrentUser();
+            $prefs = ($user && $user['prefs']) ? json_decode($user['prefs'], true) : null;
+            echo json_encode(['success' => true, 'prefs' => $prefs]);
+            break;
+
+        case 'save_prefs':
+            // Persists notification preferences for the current user
+            $user = getCurrentUser();
+            if (!$user) {
+                echo json_encode(['success' => false, 'error' => 'Not authenticated']);
+                break;
+            }
+            $prefs = json_encode([
+                'notif_enabled'  => (bool)($postData['notif_enabled'] ?? false),
+                'notif_statuses' => array_values(array_filter(
+                    (array)($postData['notif_statuses'] ?? []),
+                    'is_string'
+                )),
+            ]);
+            getDb()->prepare("UPDATE users SET prefs=? WHERE id=?")->execute([$prefs, $user['id']]);
+            echo json_encode(['success' => true]);
+            break;
+
         case 'get_metadata':
             $db = getDb();
             $rows = $db->query("SELECT key, value FROM metadata")->fetchAll(PDO::FETCH_ASSOC);
@@ -305,9 +336,11 @@ try {
 
             $clientIp = getClientIp();
 
+            $submittedBy = getCurrentUser()['id'] ?? null;
+
             $stmt = $db->prepare('
-                INSERT INTO reports (id, road_id, road_name, segment, segment_description, geometry, status, notes, timestamp, segment_ids, ip)
-                VALUES (:id, :road_id, :road_name, :segment, :segment_description, :geometry, :status, :notes, :timestamp, :segment_ids, :ip)
+                INSERT INTO reports (id, road_id, road_name, segment, segment_description, geometry, status, notes, timestamp, segment_ids, ip, submitted_by)
+                VALUES (:id, :road_id, :road_name, :segment, :segment_description, :geometry, :status, :notes, :timestamp, :segment_ids, :ip, :submitted_by)
             ');
             $stmt->execute([
                 ':id' => $reportId,
@@ -321,6 +354,7 @@ try {
                 ':timestamp' => $timestamp,
                 ':segment_ids' => isset($report['segmentIds']) ? json_encode($report['segmentIds']) : null,
                 ':ip' => $clientIp,
+                ':submitted_by' => $submittedBy,
             ]);
 
             // Triggers on reports table auto-insert into report_changes
@@ -343,8 +377,9 @@ try {
             break;
 
         case 'delete_report':
+            // Only authenticated users (or admin via admin.php) can delete
+            requireAuth();
             checkBlacklist();
-            checkRateLimit('delete_report');
 
             if (!$postData || !isset($postData['id'])) {
                 throw new Exception('No report ID provided');
@@ -361,11 +396,55 @@ try {
                 throw new Exception('Report not found');
             }
 
-            // Triggers on reports table auto-insert into report_changes
-
             $db->commit();
 
             echo json_encode(['success' => true]);
+            break;
+
+        case 'edit_report':
+            $authUser = requireAuth();
+            checkBlacklist();
+
+            if (!$postData || !isset($postData['id'])) {
+                throw new Exception('No report ID provided');
+            }
+
+            $editId = $postData['id'];
+            $db     = getDb();
+
+            $existing = $db->prepare("SELECT * FROM reports WHERE id = ?");
+            $existing->execute([$editId]);
+            $existingReport = $existing->fetch(PDO::FETCH_ASSOC);
+            if (!$existingReport) {
+                throw new Exception('Report not found');
+            }
+
+            // Validate new status if provided
+            $validStatuses = ['clear', 'snow', 'ice-patches', 'blocked-tree', 'blocked-power'];
+            $newStatus = $postData['status'] ?? $existingReport['status'];
+            if (!in_array($newStatus, $validStatuses)) {
+                throw new Exception('Invalid status');
+            }
+
+            $newNotes = $postData['notes'] ?? $existingReport['notes'];
+            if ($newNotes !== null) {
+                $newNotes = strip_tags((string)$newNotes);
+                $newNotes = filterInappropriateContent($newNotes);
+                if (strlen($newNotes) > 500) {
+                    throw new Exception('Notes are too long (maximum 500 characters)');
+                }
+            }
+
+            $db->beginTransaction();
+            $db->prepare("UPDATE reports SET status = ?, notes = ? WHERE id = ?")
+               ->execute([$newStatus, $newNotes, $editId]);
+            $db->prepare("INSERT INTO report_changes (change_type, report_id) VALUES ('update', ?)")
+               ->execute([$editId]);
+            $db->commit();
+
+            $updated = $db->prepare("SELECT * FROM reports WHERE id = ?");
+            $updated->execute([$editId]);
+            echo json_encode(['success' => true, 'report' => rowToReport($updated->fetch(PDO::FETCH_ASSOC))]);
             break;
 
         case 'get_changes':
