@@ -1,0 +1,38 @@
+version: 2
+updates:
+
+  # ── PHP Composer dependencies (app/composer.json) ──────────────────────────
+  # Opens a PR when any required package has a new release.
+  # Review the linked changelog / release notes before merging.
+  - package-ecosystem: "composer"
+    directory: "/app"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 5
+
+  # ── GitHub Actions ──────────────────────────────────────────────────────────
+  # Keeps actions/checkout, docker/build-push-action, etc. up to date.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 5
+
+  # ── Docker base images (FROM statements only) ───────────────────────────────
+  # Tracks dunglas/frankenphp:php8.4, composer:2, etc.
+  # NOTE: pla-ng is pinned via ARG PLANG_VERSION in Dockerfile.area and is NOT
+  # tracked here — a separate dep-check workflow handles that via GitHub Issues.
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 3
