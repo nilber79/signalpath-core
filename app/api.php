@@ -276,6 +276,45 @@ try {
             echo json_encode(['success' => true]);
             break;
 
+        case 'login_password':
+            // JSON login endpoint used by the login modal on the map page.
+            // Handles password-only and TOTP second-factor in one action.
+            require_once __DIR__ . '/auth/Totp.php';
+            $username = trim($postData['username'] ?? '');
+            $password = $postData['password'] ?? '';
+            $totpCode = trim($postData['totp_code'] ?? '');
+
+            $stmt = getDb()->prepare("SELECT * FROM users WHERE username = ?");
+            $stmt->execute([$username]);
+            $loginUser = $stmt->fetch();
+
+            if (!$loginUser || !password_verify($password, (string)($loginUser['password_hash'] ?? ''))) {
+                usleep(500_000); // slow brute-force
+                echo json_encode(['success' => false, 'error' => 'Invalid username or password.']);
+                break;
+            }
+            if ($loginUser['status'] === 'pending') {
+                echo json_encode(['success' => false, 'error' => 'Your account is pending admin approval.']);
+                break;
+            }
+            if ($loginUser['status'] !== 'active') {
+                echo json_encode(['success' => false, 'error' => 'Your account is not active.']);
+                break;
+            }
+            if ($loginUser['totp_enabled']) {
+                if ($totpCode === '') {
+                    echo json_encode(['success' => false, 'needTotp' => true]);
+                    break;
+                }
+                if (!Totp::verify($loginUser['totp_secret'], $totpCode)) {
+                    echo json_encode(['success' => false, 'error' => 'Invalid authenticator code.']);
+                    break;
+                }
+            }
+            createSession((int)$loginUser['id']);
+            echo json_encode(['success' => true]);
+            break;
+
         case 'get_metadata':
             $db = getDb();
             $rows = $db->query("SELECT key, value FROM metadata")->fetchAll(PDO::FETCH_ASSOC);

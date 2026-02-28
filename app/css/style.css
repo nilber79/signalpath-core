@@ -587,7 +587,8 @@
         }
         
         .form-select,
-        .form-textarea {
+        .form-textarea,
+        .form-input {
             width: 100%;
             padding: 0.75rem 1rem;
             border: 1px solid var(--color-border);
@@ -597,17 +598,84 @@
             background: var(--color-bg);
             transition: all 0.2s;
         }
-        
+
         .form-select:focus,
-        .form-textarea:focus {
+        .form-textarea:focus,
+        .form-input:focus {
             outline: none;
             border-color: var(--color-text-soft);
             background: var(--color-surface);
         }
-        
+
         .form-textarea {
             min-height: 100px;
             resize: vertical;
+        }
+
+        /* Login modal specific */
+        .login-error {
+            background: #fee2e2;
+            color: #dc2626;
+            border-radius: 8px;
+            padding: 0.625rem 0.875rem;
+            font-size: 0.875rem;
+            margin-bottom: 1rem;
+        }
+
+        .login-divider {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 0.8125rem;
+            color: var(--color-text-soft);
+            margin: 0.75rem 0;
+        }
+        .login-divider::before,
+        .login-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--color-border);
+        }
+
+        .btn-passkey {
+            width: 100%;
+            padding: 0.75rem;
+            background: #2a2622;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9375rem;
+            font-weight: 600;
+            font-family: 'DM Sans', sans-serif;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            transition: background 0.2s;
+            margin-bottom: 0.75rem;
+        }
+        .btn-passkey:hover:not(:disabled) { background: #3d3834; }
+        .btn-passkey:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        .btn-text {
+            background: none;
+            border: none;
+            color: var(--color-text-soft);
+            font-size: 0.875rem;
+            cursor: pointer;
+            padding: 0;
+            margin-bottom: 0.75rem;
+            text-decoration: underline;
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        .nav-link-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0;
         }
         
         /* Status Button Selection */

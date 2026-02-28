@@ -64,6 +64,14 @@
                     showMobileInfo: false,
                     showMobileAccount: false,
                     authUser: null, // Populated from auth_check on mount
+                    webAuthnSupported: typeof PublicKeyCredential !== 'undefined',
+                    showLoginModal: false,
+                    loginStep: 'credentials', // 'credentials' | 'totp'
+                    loginForm: { username: '', password: '', totpCode: '' },
+                    loginError: '',
+                    loginLoading: false,
+                    passkeyLoading: false,
+                    passkeyError: '',
                     showEditReportModal: false,
                     editingReport: null,
                     editReport: { status: '', notes: '' },
@@ -188,18 +196,8 @@
                     .then(d => { if (d.success) this.rebuildMeta = d.metadata; })
                     .catch(() => {});
 
-                // Check auth state, then load server-side prefs if logged in (non-critical, fail silently)
-                fetch('/api.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'auth_check' }),
-                })
-                    .then(r => r.json())
-                    .then(d => {
-                        if (d.success) this.authUser = d.user;
-                        if (this.authUser) this.loadServerPreferences();
-                    })
-                    .catch(() => {});
+                // Check auth state on load (non-critical, fail silently)
+                this.refreshAuthUser();
 
                 this.initMap();
                 this.loadRoads();
@@ -2499,6 +2497,129 @@
                             });
                             this.renderReportSegments(road);
                         }
+                    }
+                },
+
+                // --- Auth / Login Modal Methods ---
+
+                async refreshAuthUser() {
+                    try {
+                        const res = await fetch('/api.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'auth_check' }),
+                        });
+                        const d = await res.json();
+                        if (d.success) this.authUser = d.user;
+                        if (this.authUser) this.loadServerPreferences();
+                    } catch {}
+                },
+
+                openLoginModal() {
+                    this.showLoginModal = true;
+                    this.loginStep = 'credentials';
+                    this.loginForm = { username: '', password: '', totpCode: '' };
+                    this.loginError = '';
+                    this.passkeyError = '';
+                },
+
+                closeLoginModal() {
+                    this.showLoginModal = false;
+                },
+
+                async submitLogin() {
+                    this.loginLoading = true;
+                    this.loginError = '';
+                    try {
+                        const res = await fetch('/api.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                action: 'login_password',
+                                username: this.loginForm.username,
+                                password: this.loginForm.password,
+                                totp_code: this.loginStep === 'totp' ? this.loginForm.totpCode : '',
+                            }),
+                        });
+                        const d = await res.json();
+                        if (d.success) {
+                            await this.refreshAuthUser();
+                            this.closeLoginModal();
+                        } else if (d.needTotp) {
+                            this.loginStep = 'totp';
+                        } else {
+                            this.loginError = d.error || 'Login failed.';
+                        }
+                    } catch {
+                        this.loginError = 'Network error. Please try again.';
+                    } finally {
+                        this.loginLoading = false;
+                    }
+                },
+
+                async startPasskeyLogin() {
+                    this.passkeyLoading = true;
+                    this.passkeyError = '';
+                    try {
+                        const cRes = await fetch('/auth/webauthn.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'auth_challenge' }),
+                        });
+                        const cData = await cRes.json();
+                        if (!cData.success) throw new Error(cData.error || 'Failed to get challenge');
+
+                        const options = cData.options;
+                        const challengeId = options._cid;
+                        const challengeBytes = Uint8Array.from(
+                            atob(options.challenge.replace(/-/g, '+').replace(/_/g, '/')),
+                            c => c.charCodeAt(0)
+                        );
+
+                        const credential = await navigator.credentials.get({
+                            publicKey: {
+                                challenge: challengeBytes,
+                                rpId: options.rpId,
+                                timeout: options.timeout || 60000,
+                                userVerification: options.userVerification || 'preferred',
+                                allowCredentials: [],
+                            },
+                        });
+                        if (!credential) throw new Error('No credential returned');
+
+                        function bufToBase64(buf) {
+                            return btoa(String.fromCharCode(...new Uint8Array(buf)));
+                        }
+
+                        const credPayload = {
+                            id: credential.id,
+                            rawId: bufToBase64(credential.rawId),
+                            type: credential.type,
+                            response: {
+                                clientDataJSON:    bufToBase64(credential.response.clientDataJSON),
+                                authenticatorData: bufToBase64(credential.response.authenticatorData),
+                                signature:         bufToBase64(credential.response.signature),
+                                userHandle: credential.response.userHandle
+                                    ? bufToBase64(credential.response.userHandle) : null,
+                            },
+                        };
+
+                        const vRes = await fetch('/auth/webauthn.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'auth_verify', challengeId, credential: credPayload }),
+                        });
+                        const vData = await vRes.json();
+                        if (!vData.success) throw new Error(vData.error || 'Passkey verification failed');
+
+                        await this.refreshAuthUser();
+                        this.closeLoginModal();
+                    } catch (err) {
+                        if (err.name !== 'NotAllowedError') {
+                            this.passkeyError = err.message || 'Passkey sign-in failed. Try again or use password.';
+                        }
+                    } finally {
+                        this.passkeyLoading = false;
                     }
                 },
 
