@@ -58,11 +58,15 @@
                     showDisclaimerModal: false,
                     showLegendDropdown: false,
                     showInfoDropdown: false,
-                    showAdminDropdown: false,
+                    showUserDropdown: false,
                     mobileMenuOpen: false,
                     showMobileLegend: false,
                     showMobileInfo: false,
-                    showMobileAdmin: false,
+                    showMobileAccount: false,
+                    authUser: null, // Populated from auth_check on mount
+                    showEditReportModal: false,
+                    editingReport: null,
+                    editReport: { status: '', notes: '' },
                     lastUserInteraction: 0, // Timestamp of last map interaction
                     isProcessingClick: false, // Flag to prevent rapid duplicate clicks
                     customLoadingMessage: null, // Custom message for streaming progress
@@ -184,6 +188,19 @@
                     .then(d => { if (d.success) this.rebuildMeta = d.metadata; })
                     .catch(() => {});
 
+                // Check auth state, then load server-side prefs if logged in (non-critical, fail silently)
+                fetch('/api.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'auth_check' }),
+                })
+                    .then(r => r.json())
+                    .then(d => {
+                        if (d.success) this.authUser = d.user;
+                        if (this.authUser) this.loadServerPreferences();
+                    })
+                    .catch(() => {});
+
                 this.initMap();
                 this.loadRoads();
 
@@ -235,6 +252,17 @@
                         }
                     }
                 }, 30000);
+
+                // When the tab becomes visible again, reconnect SSE so we get a fresh
+                // init event with all current reports.  Browsers throttle or freeze
+                // background tabs, which means SSE onmessage callbacks may be delayed or
+                // dropped entirely while the tab is hidden.  Reconnecting on visibility
+                // re-establish is the simplest way to guarantee the data is current.
+                document.addEventListener('visibilitychange', () => {
+                    if (!document.hidden) {
+                        this.connectSSE();
+                    }
+                });
             },
             beforeUnmount() {
                 // Clean up SSE connection
@@ -879,13 +907,19 @@
                 },
 
                 scrollToRoadGroup(roadName) {
-                    // Scroll the reports list to show the clicked road's reports
+                    // Scroll the reports list to show the clicked road's reports.
+                    // Use explicit container.scrollTop instead of scrollIntoView():
+                    // Firefox propagates scrollIntoView() to the document when the
+                    // container's scroll range is exhausted (short window), pushing
+                    // the header out of view and leaving a blank bar at the bottom.
                     const container = this.$refs.reportsListContainer;
                     if (!container) return;
 
                     const groupElement = container.querySelector(`[data-road-name="${roadName}"]`);
                     if (groupElement) {
-                        groupElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        const offset = groupElement.getBoundingClientRect().top
+                                     - container.getBoundingClientRect().top;
+                        container.scrollTop += offset;
                     }
                 },
                 
@@ -1841,6 +1875,44 @@
                     this.roadSegments = [];
                 },
 
+                openEditReport(report) {
+                    this.editingReport = report;
+                    this.editReport = { status: report.status, notes: report.notes || '' };
+                    this.showEditReportModal = true;
+                },
+
+                closeEditReport() {
+                    this.showEditReportModal = false;
+                    this.editingReport = null;
+                    this.editReport = { status: '', notes: '' };
+                },
+
+                async submitEditReport() {
+                    if (!this.editingReport || !this.editReport.status) return;
+                    try {
+                        const res = await fetch('/api.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                action: 'edit_report',
+                                id: this.editingReport.id,
+                                status: this.editReport.status,
+                                notes: this.editReport.notes,
+                            }),
+                        });
+                        const data = await res.json();
+                        if (!data.success) throw new Error(data.error || 'Edit failed');
+                        // Update in-place in the local reports array
+                        const idx = this.reports.findIndex(r => r.id === this.editingReport.id);
+                        if (idx !== -1) {
+                            this.reports[idx] = { ...this.reports[idx], ...data.report };
+                        }
+                        this.closeEditReport();
+                    } catch (err) {
+                        alert('Could not save changes: ' + err.message);
+                    }
+                },
+
                 closeModal() {
                     this.showReportModal = false;
 
@@ -2450,14 +2522,51 @@
                     }
                 },
 
+                loadServerPreferences() {
+                    // Fetch saved prefs from the server for the logged-in user.
+                    // Server prefs override localStorage so settings follow the user across devices.
+                    fetch('/api.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'get_prefs' }),
+                    })
+                        .then(r => r.json())
+                        .then(d => {
+                            if (d.success && d.prefs) {
+                                this.notificationStatuses = d.prefs.notif_statuses?.length
+                                    ? d.prefs.notif_statuses
+                                    : ['blocked-tree', 'blocked-power'];
+                                if (Notification.permission === 'granted' && d.prefs.notif_enabled) {
+                                    this.notificationsEnabled = true;
+                                } else if (!d.prefs.notif_enabled) {
+                                    this.notificationsEnabled = false;
+                                }
+                            }
+                        })
+                        .catch(() => {});
+                },
+
                 saveNotificationPreferences() {
+                    // Always persist to localStorage for instant restore on next load
                     try {
                         localStorage.setItem('roadStatusNotifications', JSON.stringify({
                             enabled: this.notificationsEnabled,
-                            statuses: this.notificationStatuses
+                            statuses: this.notificationStatuses,
                         }));
                     } catch (e) {
                         console.error('Error saving notification preferences:', e);
+                    }
+                    // Also persist to the server when logged in (fire-and-forget)
+                    if (this.authUser) {
+                        fetch('/api.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                action: 'save_prefs',
+                                notif_enabled: this.notificationsEnabled,
+                                notif_statuses: this.notificationStatuses,
+                            }),
+                        }).catch(() => {});
                     }
                 },
 
@@ -2564,6 +2673,8 @@
 
                         if (!response.ok) {
                             console.warn('Failed to load reports:', response.status);
+                            this.initializationState.reportsLoaded = true;
+                            this.checkInitializationComplete();
                             return;
                         }
 
@@ -2889,15 +3000,43 @@
         const app = vueApp.mount('#app');
         window.app = app; // Expose for console debugging
 
-        // Keep --app-height in sync with the actual visible area.
-        // window.visualViewport accounts for the browser address bar on mobile
-        // (100vh does not reliably do this on Firefox/Chrome for Android).
+        // --app-height is set only on mobile to track the dynamic address bar.
+        // On desktop, 100vh is always correct and is computed natively by the CSS
+        // engine — no JS math needed.  Using window.innerHeight on desktop can
+        // introduce a subpixel rounding discrepancy at non-integer devicePixelRatio
+        // (e.g. 1.5 at Windows 150% DPI), which makes #app 1-2px taller than the
+        // real viewport and causes the browser to scroll the document, pushing the
+        // header out of view and leaving a blank bar at the bottom.
         function updateAppHeight() {
-            const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-            document.documentElement.style.setProperty('--app-height', `${h}px`);
+            const onMobile = window.innerWidth <= 768;
+            if (onMobile && window.visualViewport) {
+                // Mobile: visualViewport.height excludes the dynamic address bar
+                document.documentElement.style.setProperty('--app-height', `${window.visualViewport.height}px`);
+            } else {
+                // Desktop: remove the custom property so CSS falls back to 100vh
+                document.documentElement.style.removeProperty('--app-height');
+            }
         }
         updateAppHeight();
         if (window.visualViewport) {
             window.visualViewport.addEventListener('resize', updateAppHeight);
+            // When Chrome compensates for a fixed-bottom element (bottom sheet) by
+            // scrolling the layout viewport, visualViewport.offsetTop becomes > 0 and
+            // #app shifts above the visible area.  Translate #app to stay at the top
+            // of the visual viewport.
+            window.visualViewport.addEventListener('scroll', () => {
+                const offset = window.visualViewport.offsetTop;
+                document.getElementById('app').style.transform =
+                    offset > 0 ? `translateY(${offset}px)` : '';
+            });
         }
         window.addEventListener('resize', updateAppHeight);
+        // This is a fixed-layout app; the document itself should never scroll.
+        // Chrome may scroll the layout viewport when a large fixed element appears
+        // at the bottom (bottom sheet behaviour similar to virtual keyboard), which
+        // pushes the header out of view.  Reset scroll to 0 immediately when it happens.
+        window.addEventListener('scroll', () => {
+            if (window.scrollX !== 0 || window.scrollY !== 0) {
+                window.scrollTo(0, 0);
+            }
+        }, { passive: true });

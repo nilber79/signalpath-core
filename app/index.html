@@ -26,7 +26,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
     
     <!-- Application Styles -->
-    <link rel="stylesheet" href="css/style.css?v=20260219-v9" />
+    <link rel="stylesheet" href="css/style.css?v=20260227-v10" />
 </head>
 <body>
     <div id="app" v-cloak>
@@ -78,7 +78,10 @@
                             <div class="dropdown-divider"></div>
 
                             <div class="dropdown-section">
-                                <h4 class="dropdown-section-title"></h4>
+                                <p class="dropdown-text" style="font-size:0.75rem; color:var(--color-text-soft); margin-bottom:0.5rem;">
+                                    <template v-if="authUser">✓ Synced to your account</template>
+                                    <template v-else>Saved in this browser. <a href="/auth/login.php" style="color:inherit;">Sign in</a> to sync across devices.</template>
+                                </p>
                                 <p class="dropdown-text">
                                     <strong>Note about notifications.</strong> This page must remain open in your browser to receive notifications.
                                 </p>
@@ -167,30 +170,52 @@
                     </div>
                 </div>
 
+                <!-- Auth nav: show Sign In or user account dropdown -->
+                <div v-if="!authUser" class="nav-item">
+                    <a class="nav-link" href="/auth/login.php" style="text-decoration:none">Sign In</a>
+                </div>
+
                 <div
+                    v-if="authUser"
                     class="nav-item"
-                    @mouseenter="showAdminDropdown = true"
-                    @mouseleave="showAdminDropdown = false"
+                    @mouseenter="showUserDropdown = true"
+                    @mouseleave="showUserDropdown = false"
                 >
                     <span class="nav-link">
-                        Admin
+                        {{ authUser.display_name }}
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" style="margin-left: 4px;">
                             <path d="M6 9L1 4h10z"/>
                         </svg>
                     </span>
-                    <div class="nav-dropdown admin-dropdown" :class="{ active: showAdminDropdown }">
+                    <div class="nav-dropdown admin-dropdown" :class="{ active: showUserDropdown }">
                         <div class="dropdown-content">
                             <div class="dropdown-actions">
-                                <a class="dropdown-action-btn" href="/admin.php">
-                                    <span class="dropdown-action-icon">📋</span>
-                                    <span>Report Management</span>
+                                <a class="dropdown-action-btn" href="/auth/setup-passkey.php">
+                                    <span class="dropdown-action-icon">🔑</span>
+                                    <span>Passkeys</span>
                                 </a>
-                                <a class="dropdown-action-btn" href="/phpliteadmin.php" target="_blank" rel="noopener">
-                                    <span class="dropdown-action-icon">🗄️</span>
-                                    <span>Database</span>
+                                <a class="dropdown-action-btn" href="/auth/setup-totp.php">
+                                    <span class="dropdown-action-icon">🔐</span>
+                                    <span>Authenticator</span>
+                                </a>
+                                <template v-if="authUser.role === 'admin'">
+                                    <div class="dropdown-divider"></div>
+                                    <a class="dropdown-action-btn" href="/admin.php">
+                                        <span class="dropdown-action-icon">📋</span>
+                                        <span>Report Management</span>
+                                    </a>
+                                    <a class="dropdown-action-btn" href="/phpliteadmin.php" target="_blank" rel="noopener">
+                                        <span class="dropdown-action-icon">🗄️</span>
+                                        <span>Database</span>
+                                    </a>
+                                </template>
+                                <div class="dropdown-divider"></div>
+                                <a class="dropdown-action-btn" href="/auth/logout.php" style="color:#dc2626">
+                                    <span class="dropdown-action-icon">↩</span>
+                                    <span>Sign Out</span>
                                 </a>
                             </div>
-                            <div v-if="rebuildMeta" class="dropdown-rebuild-stats">
+                            <div v-if="authUser.role === 'admin' && rebuildMeta" class="dropdown-rebuild-stats">
                                 <div class="rebuild-stat-row">
                                     <span class="rebuild-stat-label">Last rebuild</span>
                                     <span class="rebuild-stat-value">{{ new Date(rebuildMeta.last_rebuild).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}) }}</span>
@@ -262,34 +287,57 @@
                         </button>
                     </div>
                 </div>
-                <button class="mobile-menu-item" @click="showMobileAdmin = !showMobileAdmin">
-                    <span class="mobile-menu-icon">⚙️</span>
-                    <span>Admin</span>
-                    <span class="mobile-menu-arrow" :class="{ rotated: showMobileAdmin }">▼</span>
-                </button>
-                <div class="mobile-submenu" v-if="showMobileAdmin">
-                    <div class="mobile-info-actions">
-                        <a class="mobile-info-btn" href="/admin.php">
-                            <span>📋</span>
-                            Report Management
-                        </a>
-                        <a class="mobile-info-btn" href="/phpliteadmin.php" target="_blank" rel="noopener">
-                            <span>🗄️</span>
-                            Database
-                        </a>
-                    </div>
-                    <div v-if="rebuildMeta" class="dropdown-rebuild-stats mobile-rebuild-stats">
-                        <div class="rebuild-stat-row">
-                            <span class="rebuild-stat-label">Last rebuild</span>
-                            <span class="rebuild-stat-value">{{ new Date(rebuildMeta.last_rebuild).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}) }}</span>
+                <!-- Mobile auth: account or sign in -->
+                <div v-if="!authUser">
+                    <a class="mobile-menu-item" href="/auth/login.php" style="text-decoration:none;display:flex;align-items:center;gap:0.75rem;padding:0.875rem 1.25rem">
+                        <span class="mobile-menu-icon">👤</span>
+                        <span>Sign In</span>
+                    </a>
+                </div>
+                <div v-if="authUser">
+                    <button class="mobile-menu-item" @click="showMobileAccount = !showMobileAccount">
+                        <span class="mobile-menu-icon">👤</span>
+                        <span>{{ authUser.display_name }}</span>
+                        <span class="mobile-menu-arrow" :class="{ rotated: showMobileAccount }">▼</span>
+                    </button>
+                    <div class="mobile-submenu" v-if="showMobileAccount">
+                        <div class="mobile-info-actions">
+                            <a class="mobile-info-btn" href="/auth/setup-passkey.php">
+                                <span>🔑</span>
+                                Passkeys
+                            </a>
+                            <a class="mobile-info-btn" href="/auth/setup-totp.php">
+                                <span>🔐</span>
+                                Authenticator
+                            </a>
+                            <template v-if="authUser.role === 'admin'">
+                                <a class="mobile-info-btn" href="/admin.php">
+                                    <span>📋</span>
+                                    Report Management
+                                </a>
+                                <a class="mobile-info-btn" href="/phpliteadmin.php" target="_blank" rel="noopener">
+                                    <span>🗄️</span>
+                                    Database
+                                </a>
+                            </template>
+                            <a class="mobile-info-btn" href="/auth/logout.php" style="color:#dc2626">
+                                <span>↩</span>
+                                Sign Out
+                            </a>
                         </div>
-                        <div class="rebuild-stat-row">
-                            <span class="rebuild-stat-label">Roads</span>
-                            <span class="rebuild-stat-value">{{ rebuildMeta.road_count }}</span>
-                        </div>
-                        <div class="rebuild-stat-row">
-                            <span class="rebuild-stat-label">Merge issues</span>
-                            <span class="rebuild-stat-value">{{ rebuildMeta.merge_issues_count }}</span>
+                        <div v-if="authUser.role === 'admin' && rebuildMeta" class="dropdown-rebuild-stats mobile-rebuild-stats">
+                            <div class="rebuild-stat-row">
+                                <span class="rebuild-stat-label">Last rebuild</span>
+                                <span class="rebuild-stat-value">{{ new Date(rebuildMeta.last_rebuild).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}) }}</span>
+                            </div>
+                            <div class="rebuild-stat-row">
+                                <span class="rebuild-stat-label">Roads</span>
+                                <span class="rebuild-stat-value">{{ rebuildMeta.road_count }}</span>
+                            </div>
+                            <div class="rebuild-stat-row">
+                                <span class="rebuild-stat-label">Merge issues</span>
+                                <span class="rebuild-stat-value">{{ rebuildMeta.merge_issues_count }}</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -321,6 +369,10 @@
                         </label>
                         <p style="font-size: 0.75rem; color: var(--color-text-soft); margin-top: 0.75rem; line-height: 1.5;"><strong>Note about notifications.</strong> This page must remain open in your browser to receive notifications.</p>
                     </template>
+                    <p style="font-size:0.75rem; color:var(--color-text-soft); margin-top:0.75rem;">
+                        <template v-if="authUser">✓ Synced to your account</template>
+                        <template v-else>Saved in this browser. <a href="/auth/login.php" style="color:inherit;">Sign in</a> to sync across devices.</template>
+                    </p>
                 </div>
 
                 <!-- Data Sources & Disclaimers - Always visible -->
@@ -508,6 +560,9 @@
                                             <button v-if="part.type === 'location'" class="location-coords-link" @click="handleLocationClick(part.lat, part.lng)">📍 {{ part.display }}</button>
                                             <span v-else>{{ part.text }}</span>
                                         </template>
+                                    </div>
+                                    <div v-if="authUser" class="report-card-actions" @click.stop>
+                                        <button class="report-edit-btn" @click="openEditReport(report)">Edit</button>
                                     </div>
                                 </div>
                             </div>
@@ -860,6 +915,50 @@
             </div>
         </div>
 
+        <!-- Edit Report Modal (logged-in users) -->
+        <div class="modal-overlay" v-if="showEditReportModal" @click.self="closeEditReport">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>Edit Report</h3>
+                    <button class="modal-close" @click="closeEditReport">&times;</button>
+                </div>
+                <div class="modal-content" v-if="editingReport">
+                    <div class="segment-info">
+                        <div class="segment-label">Road</div>
+                        <div class="segment-text">{{ editingReport.road_name }}</div>
+                    </div>
+                    <div class="segment-info" v-if="editingReport.segment_description">
+                        <div class="segment-label">Segment</div>
+                        <div class="segment-text">{{ editingReport.segment_description }}</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Road Status *</label>
+                        <div class="status-buttons">
+                            <button
+                                v-for="status in statusTypes"
+                                :key="status.value"
+                                type="button"
+                                class="status-btn"
+                                :class="{ selected: editReport.status === status.value }"
+                                @click="editReport.status = status.value"
+                            >
+                                <div class="status-btn-color" :style="{ background: status.color }"></div>
+                                <div class="status-btn-label">{{ status.label }}</div>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Notes <span style="font-weight:400;color:var(--color-text-soft)">(optional)</span></label>
+                        <textarea class="form-textarea" v-model="editReport.notes" rows="3" maxlength="500" placeholder="Optional details..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" @click="closeEditReport">Cancel</button>
+                    <button class="btn btn-primary" @click="submitEditReport" :disabled="!editReport.status">Save Changes</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Foreground toast notifications (desktop, page visible) -->
         <div class="toast-container" v-if="toasts.length > 0">
             <div v-for="toast in toasts" :key="toast.id" class="toast">
@@ -893,6 +992,6 @@
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 
     <!-- Application Script -->
-    <script src="js/app.js?v=20260219-streamfix"></script>
+    <script src="js/app.js?v=20260227-v2"></script>
 </body>
 </html>
