@@ -2587,8 +2587,10 @@
                         });
                         if (!credential) throw new Error('No credential returned');
 
+                        // base64url without padding (required by webauthn-lib)
                         function bufToBase64(buf) {
-                            return btoa(String.fromCharCode(...new Uint8Array(buf)));
+                            return btoa(String.fromCharCode(...new Uint8Array(buf)))
+                                .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
                         }
 
                         const credPayload = {

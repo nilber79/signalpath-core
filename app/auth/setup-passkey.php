@@ -154,7 +154,8 @@ btn.addEventListener('click', async () => {
             return Uint8Array.from(atob(b64.replace(/-/g,'+').replace(/_/g,'/')), c => c.charCodeAt(0));
         }
         function bufToBase64(buf) {
-            return btoa(String.fromCharCode(...new Uint8Array(buf)));
+            return btoa(String.fromCharCode(...new Uint8Array(buf)))
+                .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
         }
 
         const pubKeyOptions = {
