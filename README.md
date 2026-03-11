@@ -1,17 +1,25 @@
 <img src="app/favicon.svg" width="128" />
 
-StormPath: A community-sourced situational awareness tool for real-time road status and emergency navigation. Report blocked roads, snow/ice conditions, and other hazards — and see what your neighbors are reporting in real time.
+StormPath: A community-sourced situational awareness tool for real-time road status and emergency navigation. Report blocked roads, snow/ice conditions, and other hazards — and see what your neighbors are reporting in real time. First responders can submit confirmed incidents directly from the field with a single tap.
 
 ## Features
 
 - Interactive map with real-time road condition overlays
 - Community report submission (no account required)
 - Segment-level reporting on long roads
+- **First responder quick-report mode** — one-tap incident submission from the field (accidents, road closures, helicopter LZs); auto-marked as confirmed
+- **Confirmed reports** — first responder and admin reports display with a verified badge and bolder map overlay
+- **Waze partner feed** — confirmed incidents served as a CIFS JSON feed for Waze For Cities integration (`/waze-feed.php`)
+- New incident types: Accident, Road Closure, Helicopter LZ (in addition to existing weather/hazard types)
 - Server-Sent Events (SSE) for live updates
 - Toast and browser notifications for new blocked-road reports
+- **User accounts with passkey (WebAuthn) and TOTP authentication**
+- Role-based access: `user`, `first_responder`, `admin`
+- Admin panel: report management, user management, IP access lists, merge issue review
 - Nightly automatic road data refresh from OpenStreetMap
 - Automatic container updates via Watchtower (no manual update steps)
 - Self-contained Docker deployment (no external database server)
+- Optional Litestream replication to S3-compatible storage for zero-downtime backups
 
 ---
 
@@ -63,13 +71,15 @@ Copy `.env.example` to `.env` and fill in your values:
 GHCR_ORG=your-github-username            # Your GitHub username (the fork owner)
 AREA_TAG=your-area-slug-latest           # Your area slug + "-latest"
 DOMAIN=roadstatus.yourcounty.gov         # Your domain — Scenario A only (see below)
-ADMIN_PASSWORD=your-strong-password-here # Password for /admin.php and /phpliteadmin.php
+ADMIN_USERNAME=admin                     # Username for the initial admin account
+ADMIN_PASSWORD=your-strong-password-here # Password for the initial admin account and /phpliteadmin.php
 ```
 
 | Variable | Scenario A | Scenario B |
 |---|---|---|
 | `GHCR_ORG` | Required | Required |
 | `AREA_TAG` | Required | Required |
+| `ADMIN_USERNAME` | Required | Required |
 | `ADMIN_PASSWORD` | Required | Required |
 | `DOMAIN` | Required — set to your real hostname | Not used — leave blank or omit |
 
@@ -197,27 +207,100 @@ docker compose pull && docker compose up -d
 
 ---
 
-## Admin Tools
+## User Accounts & Authentication
 
-StormPath includes two password-protected admin tools for managing report data.
-Both share the `ADMIN_PASSWORD` you set in your `.env` file.
+StormPath includes a full user account system. Accounts are required only for privileged
+actions (first responder reporting, admin access) — the public map and community report
+submission work without an account.
 
-> **Important:** The default password is `changeme`. Always set a strong password
-> before your site is publicly accessible. Restart the container after changing it:
-> ```bash
-> docker compose restart
-> ```
+### Roles
 
-### `/admin.php` — Report and IP list management
+| Role | Capabilities |
+|---|---|
+| `user` | Submit community reports; reports are unconfirmed |
+| `first_responder` | All of the above, plus FR quick-report mode (reports auto-confirmed) |
+| `admin` | All of the above, plus access to the Admin Panel |
 
-A built-in admin interface for day-to-day operations:
+### Registration & Approval
 
-- **Reports tab** — View all reports from the past 30 days grouped by road.
-  Update a report's status (e.g. mark a blocked road as Clear once the hazard is
-  resolved) or delete a report outright. Status changes are pushed to connected
-  browsers in real time via Server-Sent Events.
-- **IP Lists tab** — Add or remove IP addresses from the whitelist (always
-  allowed, bypasses rate limits) or blacklist (blocked from submitting reports).
+New user registrations are open by default. Newly registered accounts receive `pending`
+status and cannot log in until an admin approves them at `/admin-users.php`.
+
+### Authentication Methods
+
+- **Passkey (WebAuthn)** — hardware keys, Face ID, Touch ID, Windows Hello. Recommended.
+- **Password + optional TOTP** — traditional username/password with optional authenticator app 2FA.
+
+### Initial Admin Account
+
+On first container start, if no users exist, StormPath seeds an admin account from the
+`ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables. Log in with these credentials
+and add a passkey immediately (`/auth/setup-passkey.php`).
+
+---
+
+## First Responder Quick-Report Mode
+
+First responders and admins see a red **⚡ FR Report** button in the map's bottom-right corner.
+
+**Flow:**
+1. Tap **FR Report** — the cursor changes to a crosshair
+2. Tap any road on the map — a quick-report panel appears showing the road name
+3. Optionally fill in notes (e.g. "2-car collision, southbound lane blocked")
+4. Tap an incident type button to submit instantly — no separate submit step
+
+**Incident types available in FR mode:**
+
+| Button | Status | Waze type |
+|---|---|---|
+| 🚗 Accident | `accident` | `ACCIDENT / ACCIDENT_MAJOR` |
+| 🚧 Road Closure | `road-closure` | `ROAD_CLOSED` |
+| 🚁 LZ Active | `lz` | `ROAD_CLOSED` |
+| 🌲 Tree Down | `blocked-tree` | `HAZARD / HAZARD_ON_ROAD_OBJECT` |
+| ⚡ Power Line | `blocked-power` | `HAZARD / HAZARD_ON_ROAD_OBJECT` |
+| ❄️ Snow | `snow` | `HAZARD / HAZARD_WEATHER_SNOW` |
+| 🧊 Ice | `ice-patches` | `HAZARD / HAZARD_WEATHER_ICE` |
+
+FR reports are automatically marked `confirmed = 1` server-side. Confirmed reports render
+with a bolder line on the map and show a green **✓ Confirmed** badge in the report list
+and admin panel.
+
+---
+
+## Waze For Cities Integration
+
+StormPath exposes a [CIFS (Closure and Incident Feed Specification)](https://developers.google.com/waze/data-feed/constructing-a-partner-feed)
+JSON feed at `/waze-feed.php`. Register this URL in your [Waze For Cities](https://www.waze.com/wazeforcities/)
+partner account; Waze polls it automatically every few minutes.
+
+The feed includes only **confirmed** (first responder / admin) reports that are not `clear`
+and were submitted within the past 3 days. Community (unconfirmed) reports are excluded.
+
+### Optional key protection
+
+Set `WAZE_FEED_KEY` in your `.env` file to restrict feed access:
+
+```env
+WAZE_FEED_KEY=your-secret-key
+```
+
+Then register the feed URL as `https://your.domain/waze-feed.php?key=your-secret-key`.
+
+---
+
+## Admin Panel (`/admin.php`)
+
+A built-in interface for day-to-day operations, accessible to accounts with the `admin` role.
+
+- **Reports tab** — View all reports from the past 30 days grouped by road. Update a
+  report's status or delete it. Confirmed reports show a green **✓ Confirmed** badge.
+  Status changes are pushed to connected browsers in real time via Server-Sent Events.
+- **IP Lists tab** — Add or remove IP addresses from the whitelist (always allowed,
+  bypasses rate limits) or blacklist (blocked from submitting reports).
+- **Merge Issues tab** — Review road segments that could not be automatically merged
+  during the last nightly rebuild, along with the reason.
+- **Users tab** (`/admin-users.php`) — Approve pending accounts, change roles
+  (`user` / `first_responder` / `admin`), deactivate accounts, or delete users.
 
 ### `/phpliteadmin.php` — Direct database access
 
@@ -247,13 +330,14 @@ GitHub Actions (nightly)
                                 │
                     ┌───────────┴───────────┐
                   PHP API              Static files
-                (api.php, sse.php)    (HTML/CSS/JS/tiles)
+           (api.php, webauthn.php,    (HTML/CSS/JS/tiles)
+            waze-feed.php, sse.php)
                     │
               SQLite (reports.db)     ← volume-mounted (persists across updates)
 ```
 
 **Image layers:**
-- `stormpath-core` — FrankenPHP + PHP extensions + app source (api.php, sse.php, index.html, CSS, JS)
+- `stormpath-core` — FrankenPHP + PHP extensions + app source (api.php, auth/, waze-feed.php, index.html, CSS, JS)
 - `stormpath:<area>` — extends core with baked-in roads data, PMTiles, and area-config.json
 
 ## Data Sources
