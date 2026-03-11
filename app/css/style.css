@@ -2242,6 +2242,15 @@
     font-weight: 700;
 }
 
+.fr-coverage-info {
+    margin-top: 0.35rem;
+    font-size: 0.75rem;
+    color: var(--color-text-soft);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .fr-report-body {
     padding: 1rem 1.25rem 0.5rem;
 }

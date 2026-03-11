@@ -26,7 +26,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
     
     <!-- Application Styles -->
-    <link rel="stylesheet" href="css/style.css?v=20260310-v12" />
+    <link rel="stylesheet" href="css/style.css?v=20260311-v1" />
 </head>
 <body>
     <div id="app" v-cloak>
@@ -454,7 +454,8 @@
                 <div class="selection-banner" v-if="frMode && !frRoad">
                     <div class="selection-header">FR Quick Report</div>
                     <div class="selection-subtitle" style="font-size: 0.8125rem; margin-top: 0.25rem;">
-                        Tap a road on the map to select it
+                        <span v-if="frLocating">📡 Getting your location…</span>
+                        <span v-else>Tap a road on the map to select it</span>
                     </div>
                     <div class="selection-actions">
                         <button class="btn btn-secondary btn-small" @click="cancelFRReport">Cancel</button>
@@ -466,6 +467,9 @@
                     <div class="fr-report-header">
                         <div class="fr-report-title">Quick Incident Report</div>
                         <div class="fr-report-road">{{ frRoad.name || 'Unnamed Road' }}</div>
+                        <div class="fr-coverage-info" v-if="frIntersections && (frIntersections.from || frIntersections.to)">
+                            📍 {{ frIntersections.from || 'start of road' }} → {{ frIntersections.to || 'end of road' }}
+                        </div>
                     </div>
                     <div class="fr-report-body">
                         <label class="fr-notes-label">Notes <span style="font-weight:400;opacity:0.7">(optional — fill before tapping below)</span></label>
@@ -1135,6 +1139,6 @@
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 
     <!-- Application Script -->
-    <script src="js/app.js?v=20260310-v5"></script>
+    <script src="js/app.js?v=20260311-v1"></script>
 </body>
 </html>

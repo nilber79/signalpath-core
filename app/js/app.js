@@ -93,10 +93,14 @@
                     areaConfig: null, // Loaded from /area-config.json at startup
                     rebuildMeta: null, // Loaded from /api.php?action=get_metadata at startup
                     // First Responder quick-report mode
-                    frMode: false,      // crosshair mode active
-                    frRoad: null,       // road selected in FR mode
-                    frNotes: '',        // optional notes for FR report
-                    frLoading: false    // submission in progress
+                    frMode: false,         // crosshair mode active
+                    frRoad: null,          // road selected in FR mode
+                    frNotes: '',           // optional notes for FR report
+                    frLoading: false,      // submission in progress
+                    frLocating: false,     // waiting for GPS fix
+                    frUserLat: null,       // FR's GPS latitude
+                    frUserLng: null,       // FR's GPS longitude
+                    frIntersections: null  // { from: roadName|null, to: roadName|null }
                 }
             },
             computed: {
@@ -734,6 +738,11 @@
                                 if (road) {
                                     this.frRoad = road;
                                     this.frNotes = '';
+                                    // Compute intersections from click point
+                                    const clickLat = e.lngLat.lat;
+                                    const clickLng = e.lngLat.lng;
+                                    const cp = this.findClosestPointOnPolyline(clickLat, clickLng, road.geometry);
+                                    this.frIntersections = this.findNearestIntersections(road, cp.index, cp.t);
                                     // Focus the notes field after render
                                     this.$nextTick(() => {
                                         const el = document.getElementById('fr-notes');
@@ -1915,12 +1924,99 @@
 
                 // ── First Responder Quick Report ──────────────────────────────────────
 
+                // Returns { index, t, lat, lng, dist } for the closest point on a
+                // polyline (array of [lat, lng]) to the given coordinate.
+                findClosestPointOnPolyline(lat, lng, geometry) {
+                    let minDist = Infinity, bestIdx = 0, bestT = 0;
+                    let bestLat = geometry[0][0], bestLng = geometry[0][1];
+                    for (let i = 0; i < geometry.length - 1; i++) {
+                        const [a0, a1] = geometry[i];
+                        const [b0, b1] = geometry[i + 1];
+                        const dx = b0 - a0, dy = b1 - a1;
+                        const len2 = dx * dx + dy * dy;
+                        let t = 0;
+                        if (len2 > 0) t = Math.max(0, Math.min(1, ((lat - a0) * dx + (lng - a1) * dy) / len2));
+                        const cx = a0 + t * dx, cy = a1 + t * dy;
+                        const dist = Math.sqrt((lat - cx) ** 2 + (lng - cy) ** 2);
+                        if (dist < minDist) {
+                            minDist = dist; bestIdx = i; bestT = t; bestLat = cx; bestLng = cy;
+                        }
+                    }
+                    return { index: bestIdx, t: bestT, lat: bestLat, lng: bestLng, dist: minDist };
+                },
+
+                // Returns { road, index, t, dist } for the allRoads entry nearest to (lat, lng).
+                findNearestRoadToPoint(lat, lng) {
+                    let best = null;
+                    for (const road of this.allRoads) {
+                        if (!road.geometry || road.geometry.length < 2) continue;
+                        const r = this.findClosestPointOnPolyline(lat, lng, road.geometry);
+                        if (!best || r.dist < best.dist) best = { road, ...r };
+                    }
+                    return best;
+                },
+
+                // For a road and incident position (index+t along geometry), returns the names
+                // of the nearest intersecting roads before and after the incident point.
+                // Uses proximity threshold (~15 m in degrees) to detect shared nodes.
+                findNearestIntersections(road, incidentIndex, incidentT) {
+                    const THRESHOLD = 0.00015; // ≈ 15 m
+                    const incidentPos = incidentIndex + incidentT;
+                    let beforeBest = null, afterBest = null;
+                    for (const other of this.allRoads) {
+                        if (other.id === road.id) continue;
+                        if (!other.geometry || !other.name) continue;
+                        for (const [olat, olng] of other.geometry) {
+                            const c = this.findClosestPointOnPolyline(olat, olng, road.geometry);
+                            if (c.dist > THRESHOLD) continue;
+                            const pos = c.index + c.t;
+                            if (pos < incidentPos - 0.01) {
+                                if (!beforeBest || pos > beforeBest.pos)
+                                    beforeBest = { pos, name: other.name };
+                            } else if (pos > incidentPos + 0.01) {
+                                if (!afterBest || pos < afterBest.pos)
+                                    afterBest = { pos, name: other.name };
+                            }
+                        }
+                    }
+                    return {
+                        from: beforeBest?.name || null,
+                        to: afterBest?.name || null,
+                    };
+                },
+
                 startFRReport() {
                     this.frMode = true;
                     this.frRoad = null;
                     this.frNotes = '';
+                    this.frIntersections = null;
+                    this.frUserLat = null;
+                    this.frUserLng = null;
                     if (this.map) {
                         this.map.getCanvas().style.cursor = 'crosshair';
+                    }
+                    // Auto-select nearest road via GPS
+                    if (navigator.geolocation) {
+                        this.frLocating = true;
+                        navigator.geolocation.getCurrentPosition(
+                            (pos) => {
+                                if (!this.frMode) return; // cancelled while locating
+                                this.frUserLat = pos.coords.latitude;
+                                this.frUserLng = pos.coords.longitude;
+                                this.frLocating = false;
+                                const nearest = this.findNearestRoadToPoint(this.frUserLat, this.frUserLng);
+                                if (nearest) {
+                                    this.frRoad = nearest.road;
+                                    this.frIntersections = this.findNearestIntersections(nearest.road, nearest.index, nearest.t);
+                                    this.$nextTick(() => {
+                                        const el = document.getElementById('fr-notes');
+                                        if (el) el.focus();
+                                    });
+                                }
+                            },
+                            () => { this.frLocating = false; }, // error — let user tap manually
+                            { timeout: 6000, maximumAge: 30000 }
+                        );
                     }
                 },
 
@@ -1929,6 +2025,8 @@
                     this.frRoad = null;
                     this.frNotes = '';
                     this.frLoading = false;
+                    this.frLocating = false;
+                    this.frIntersections = null;
                     if (this.map) {
                         this.map.getCanvas().style.cursor = '';
                     }
