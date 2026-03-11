@@ -20,40 +20,69 @@ $needTotp    = false;
 $pendingUser = null;
 
 // ── Password login POST ────────────────────────────────────────────────────
+// Two-step flow: step 1 verifies password and (if TOTP enabled) stores the
+// user id in the session. Step 2 verifies the TOTP code using that session
+// value — the plaintext password is never echoed back into the HTML.
+
+spStartSession(); // ensure session is available for TOTP handoff
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username'])) {
+    // ── Step 1: password ──────────────────────────────────────────────────
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
-    $totpCode = trim($_POST['totp_code'] ?? '');
 
     $stmt = getDb()->prepare("SELECT * FROM users WHERE username = ?");
     $stmt->execute([$username]);
     $user = $stmt->fetch();
 
     if (!$user || !password_verify($password, (string)($user['password_hash'] ?? ''))) {
-        // Slow down brute-force attempts
-        usleep(500_000);
+        usleep(500_000); // slow brute-force
         $error = 'Invalid username or password.';
     } elseif ($user['status'] === 'pending') {
         $error = 'Your account is pending admin approval.';
     } elseif ($user['status'] !== 'active') {
         $error = 'Your account is not active.';
     } elseif ($user['totp_enabled']) {
-        if ($totpCode === '') {
-            // Ask for TOTP code
-            $needTotp    = true;
-            $pendingUser = $user;
-        } elseif (!Totp::verify($user['totp_secret'], $totpCode)) {
-            $error = 'Invalid authenticator code.';
-        } else {
-            createSession((int)$user['id']);
-            header('Location: ' . $redirect);
-            exit;
-        }
+        // Store pending user id in session so the TOTP step doesn't need the password
+        $_SESSION['sp_totp_uid']      = (int)$user['id'];
+        $_SESSION['sp_totp_redirect'] = $redirect;
+        $needTotp = true;
     } else {
         createSession((int)$user['id']);
         header('Location: ' . $redirect);
         exit;
     }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['totp_code'])) {
+    // ── Step 2: TOTP ──────────────────────────────────────────────────────
+    $pendingUid      = (int)($_SESSION['sp_totp_uid']      ?? 0);
+    $pendingRedirect = $_SESSION['sp_totp_redirect'] ?? $redirect;
+    $totpCode        = trim($_POST['totp_code'] ?? '');
+
+    if ($pendingUid) {
+        $stmt = getDb()->prepare("SELECT * FROM users WHERE id = ? AND status = 'active'");
+        $stmt->execute([$pendingUid]);
+        $user = $stmt->fetch();
+
+        if (!$user) {
+            unset($_SESSION['sp_totp_uid'], $_SESSION['sp_totp_redirect']);
+            $error = 'Session expired. Please sign in again.';
+        } elseif (!Totp::verify($user['totp_secret'], $totpCode)) {
+            $needTotp = true; // re-show TOTP form
+            $error = 'Invalid authenticator code.';
+        } else {
+            unset($_SESSION['sp_totp_uid'], $_SESSION['sp_totp_redirect']);
+            createSession($pendingUid);
+            header('Location: ' . $pendingRedirect);
+            exit;
+        }
+    }
+}
+
+// Restore TOTP-pending state across page loads (e.g. after a wrong TOTP code)
+if (!$needTotp && !empty($_SESSION['sp_totp_uid'])) {
+    $needTotp = true;
 }
 
 $area_cfg    = [];
@@ -146,11 +175,9 @@ function h(string $s): string
         <div class="error"><?= h($error) ?></div>
     <?php endif; ?>
 
-    <?php if ($needTotp && $pendingUser): ?>
-        <!-- TOTP second factor -->
+    <?php if ($needTotp): ?>
+        <!-- TOTP second factor — user id is stored in session, no credentials in the form -->
         <form method="post">
-            <input type="hidden" name="username" value="<?= h($pendingUser['username']) ?>">
-            <input type="hidden" name="password" value="<?= h($_POST['password'] ?? '') ?>">
             <div class="field">
                 <label for="totp_code">Authenticator Code</label>
                 <input type="text" id="totp_code" name="totp_code" inputmode="numeric"

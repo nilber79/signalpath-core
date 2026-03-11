@@ -1,15 +1,8 @@
 <?php
 ini_set('display_errors', 0);
-ini_set('memory_limit', '512M');
+ini_set('memory_limit', '64M');
 set_time_limit(300);
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    exit(0);
-}
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/auth/auth.php';
@@ -38,63 +31,6 @@ function rowToReport($row) {
         'segmentIds' => $row['segment_ids'] ? json_decode($row['segment_ids'], true) : null,
         'confirmed' => (int)($row['confirmed'] ?? 0),
     ];
-}
-
-/**
- * Simplify road geometry using Douglas-Peucker algorithm
- */
-function simplifyGeometry($points, $tolerance = 0.0001) {
-    if (count($points) <= 2) {
-        return $points;
-    }
-
-    $maxDist = 0;
-    $index = 0;
-    $end = count($points) - 1;
-
-    for ($i = 1; $i < $end; $i++) {
-        $dist = perpendicularDistance($points[$i], $points[0], $points[$end]);
-        if ($dist > $maxDist) {
-            $index = $i;
-            $maxDist = $dist;
-        }
-    }
-
-    if ($maxDist > $tolerance) {
-        $recResults1 = simplifyGeometry(array_slice($points, 0, $index + 1), $tolerance);
-        $recResults2 = simplifyGeometry(array_slice($points, $index), $tolerance);
-
-        array_pop($recResults1);
-        return array_merge($recResults1, $recResults2);
-    } else {
-        return [$points[0], $points[$end]];
-    }
-}
-
-/**
- * Calculate perpendicular distance from point to line segment
- */
-function perpendicularDistance($point, $lineStart, $lineEnd) {
-    $dx = $lineEnd[1] - $lineStart[1];
-    $dy = $lineEnd[0] - $lineStart[0];
-
-    $mag = sqrt($dx * $dx + $dy * $dy);
-    if ($mag > 0.0) {
-        $dx /= $mag;
-        $dy /= $mag;
-    }
-
-    $pvx = $point[1] - $lineStart[1];
-    $pvy = $point[0] - $lineStart[0];
-
-    $pvdot = $dx * $pvx + $dy * $pvy;
-    $dsx = $pvdot * $dx;
-    $dsy = $pvdot * $dy;
-
-    $ax = $pvx - $dsx;
-    $ay = $pvy - $dsy;
-
-    return sqrt($ax * $ax + $ay * $ay);
 }
 
 /**
@@ -128,25 +64,6 @@ function filterInappropriateContent($text) {
     }
 
     return trim($text);
-}
-
-/**
- * Classify road type based on tags
- */
-function classifyRoadType($tags) {
-    if (isset($tags['highway'])) {
-        $highway = $tags['highway'];
-
-        $majorTypes = ['motorway', 'trunk', 'primary'];
-        $secondaryTypes = ['secondary', 'tertiary'];
-        $minorTypes = ['unclassified', 'residential', 'service'];
-
-        if (in_array($highway, $majorTypes)) return 'major';
-        if (in_array($highway, $secondaryTypes)) return 'secondary';
-        if (in_array($highway, $minorTypes)) return 'minor';
-    }
-
-    return 'other';
 }
 
 $action = $_GET['action'] ?? null;
@@ -353,6 +270,17 @@ try {
                 throw new Exception('Missing required fields');
             }
 
+            // Sanitise scalar fields
+            $report['road_id']   = (int)$report['road_id'];
+            $report['road_name'] = mb_substr(strip_tags((string)$report['road_name']), 0, 200);
+
+            // Validate geometry: must be an array of coordinate pairs, max 2 000 points
+            if (isset($report['geometry'])) {
+                if (!is_array($report['geometry']) || count($report['geometry']) > 2000) {
+                    throw new Exception('Invalid geometry');
+                }
+            }
+
             $validStatuses = ['clear', 'snow', 'ice-patches', 'blocked-tree', 'blocked-power',
                              'accident', 'road-closure', 'lz'];
             if (!in_array($report['status'], $validStatuses)) {
@@ -370,7 +298,8 @@ try {
                 }
             }
 
-            $timestamp = $report['timestamp'] ?? date('c');
+            // Always use the server clock — never trust a client-supplied timestamp
+            $timestamp = gmdate('Y-m-d\TH:i:s.') . sprintf('%03d', (int)(microtime(true) * 1000) % 1000) . 'Z';
 
             $db = getDb();
             $db->beginTransaction();
@@ -507,7 +436,7 @@ try {
             $stmt = $db->prepare("
                 SELECT c.change_id, c.change_type, c.report_id, c.changed_at,
                        r.id, r.road_id, r.road_name, r.segment, r.segment_description,
-                       r.geometry, r.status, r.notes, r.timestamp, r.segment_ids
+                       r.geometry, r.status, r.notes, r.timestamp, r.segment_ids, r.confirmed
                 FROM report_changes c
                 LEFT JOIN reports r ON c.report_id = r.id
                 WHERE c.change_id > :since_id
@@ -570,7 +499,6 @@ try {
                 fclose($handle);
             }
             exit(0);
-            break;
 
         case 'get_reports_stream':
             // Stream reports from SQLite as NDJSON
@@ -591,7 +519,6 @@ try {
                 flush();
             }
             exit(0);
-            break;
 
         default:
             throw new Exception('Invalid action');

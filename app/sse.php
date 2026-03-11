@@ -22,36 +22,25 @@ ini_set('implicit_flush', '1');
 
 ob_implicit_flush(1);
 
-/**
- * Get SQLite database connection
- */
-function getDb() {
-    static $db = null;
-    if ($db === null) {
-        $dbPath = __DIR__ . '/data/reports.db';
-        $db = new PDO('sqlite:' . $dbPath);
-        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        $db->exec('PRAGMA journal_mode=WAL');
-        $db->exec('PRAGMA busy_timeout=5000');
-    }
-    return $db;
-}
+require_once __DIR__ . '/db.php';
 
 /**
- * Convert a database row to the report object format the frontend expects
+ * Convert a database row to the report object format the frontend expects.
+ * Must stay in sync with api.php:rowToReport().
  */
 function rowToReport($row) {
     return [
-        'id' => $row['id'],
-        'road_id' => (int)$row['road_id'],
-        'road_name' => $row['road_name'],
-        'segment' => $row['segment'],
+        'id'                  => $row['id'],
+        'road_id'             => (int)$row['road_id'],
+        'road_name'           => $row['road_name'],
+        'segment'             => $row['segment'],
         'segment_description' => $row['segment_description'],
-        'geometry' => $row['geometry'] ? json_decode($row['geometry'], true) : null,
-        'status' => $row['status'],
-        'notes' => $row['notes'],
-        'timestamp' => $row['timestamp'],
-        'segmentIds' => $row['segment_ids'] ? json_decode($row['segment_ids'], true) : null,
+        'geometry'            => $row['geometry'] ? json_decode($row['geometry'], true) : null,
+        'status'              => $row['status'],
+        'notes'               => $row['notes'],
+        'timestamp'           => $row['timestamp'],
+        'segmentIds'          => $row['segment_ids'] ? json_decode($row['segment_ids'], true) : null,
+        'confirmed'           => (int)($row['confirmed'] ?? 0),
     ];
 }
 
@@ -87,7 +76,7 @@ while (true) {
         $stmt = $db->prepare("
             SELECT c.change_id, c.change_type, c.report_id,
                    r.id, r.road_id, r.road_name, r.segment, r.segment_description,
-                   r.geometry, r.status, r.notes, r.timestamp, r.segment_ids
+                   r.geometry, r.status, r.notes, r.timestamp, r.segment_ids, r.confirmed
             FROM report_changes c
             LEFT JOIN reports r ON c.report_id = r.id
             WHERE c.change_id > :since_id
