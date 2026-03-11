@@ -219,9 +219,9 @@ try {
             // Use named argument — first positional arg is AttestationStatementSupportManager, not CeremonyStepManager
             $validator = AuthenticatorAttestationResponseValidator::create(ceremonyStepManager: $csm);
             $source    = $validator->check(
-                authenticatorAttestationResponse: $credential->response,
+                authenticatorAttestationResponse:   $credential->response,
                 publicKeyCredentialCreationOptions: $creationOptions,
-                request: getOrigin(),
+                host:                               getRpId(),
             );
 
             // Persist the credential
@@ -312,15 +312,13 @@ try {
             $csmFactory->setAlgorithmManager(buildCoseAlgorithmManager());
             $csm = $csmFactory->requestCeremony();
 
-            // Use named argument — first positional arg is PublicKeyCredentialSourceRepository, not CeremonyStepManager.
-            // The first param of check() is credentialId (string|PublicKeyCredentialSource); pass $source directly.
             $validator = AuthenticatorAssertionResponseValidator::create(ceremonyStepManager: $csm);
             $newSource  = $validator->check(
-                credentialId:                      $source,
-                authenticatorAssertionResponse:    $credential->response,
-                publicKeyCredentialRequestOptions: $requestOptions,
-                request:                           getOrigin(),
-                userHandle:                        null,
+                publicKeyCredentialSource:          $source,
+                authenticatorAssertionResponse:     $credential->response,
+                publicKeyCredentialRequestOptions:  $requestOptions,
+                host:                               getRpId(),
+                userHandle:                         null,
             );
 
             // Update sign count
