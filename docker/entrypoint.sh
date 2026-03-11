@@ -164,6 +164,10 @@ if (!in_array('submitted_by', \$colNames)) {
     \$db->exec('ALTER TABLE reports ADD COLUMN submitted_by INTEGER REFERENCES users(id)');
     echo \"[entrypoint] Added submitted_by column to reports.\\n\";
 }
+if (!in_array('confirmed', \$colNames)) {
+    \$db->exec('ALTER TABLE reports ADD COLUMN confirmed INTEGER DEFAULT 0');
+    echo \"[entrypoint] Added confirmed column to reports.\\n\";
+}
 \$userCols = array_column(\$db->query('PRAGMA table_info(users)')->fetchAll(PDO::FETCH_ASSOC), 'name');
 if (!in_array('prefs', \$userCols)) {
     \$db->exec('ALTER TABLE users ADD COLUMN prefs TEXT');

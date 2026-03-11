@@ -26,7 +26,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
     
     <!-- Application Styles -->
-    <link rel="stylesheet" href="css/style.css?v=20260227-v11" />
+    <link rel="stylesheet" href="css/style.css?v=20260310-v12" />
 </head>
 <body>
     <div id="app" v-cloak>
@@ -450,6 +450,55 @@
                     </div>
                 </div>
 
+                <!-- FR mode banner — shown when crosshair mode is active and no road selected yet -->
+                <div class="selection-banner" v-if="frMode && !frRoad">
+                    <div class="selection-header">FR Quick Report</div>
+                    <div class="selection-subtitle" style="font-size: 0.8125rem; margin-top: 0.25rem;">
+                        Tap a road on the map to select it
+                    </div>
+                    <div class="selection-actions">
+                        <button class="btn btn-secondary btn-small" @click="cancelFRReport">Cancel</button>
+                    </div>
+                </div>
+
+                <!-- FR Quick-Report overlay — shown once a road is selected in FR mode -->
+                <div class="fr-report-panel" v-if="frMode && frRoad">
+                    <div class="fr-report-header">
+                        <div class="fr-report-title">Quick Incident Report</div>
+                        <div class="fr-report-road">{{ frRoad.name || 'Unnamed Road' }}</div>
+                    </div>
+                    <div class="fr-report-body">
+                        <label class="fr-notes-label">Notes <span style="font-weight:400;opacity:0.7">(optional — fill before tapping below)</span></label>
+                        <textarea
+                            id="fr-notes"
+                            class="fr-notes-input"
+                            v-model="frNotes"
+                            rows="2"
+                            maxlength="500"
+                            placeholder="e.g. 2-car collision, southbound lane blocked"
+                        ></textarea>
+                        <div class="fr-incident-label">Tap to submit instantly:</div>
+                        <div class="fr-incident-grid">
+                            <button class="fr-incident-btn" @click="submitFRReport('accident')"   :disabled="frLoading" style="--fr-color:#dc2626">🚗 Accident</button>
+                            <button class="fr-incident-btn" @click="submitFRReport('road-closure')" :disabled="frLoading" style="--fr-color:#7c3aed">🚧 Road Closure</button>
+                            <button class="fr-incident-btn" @click="submitFRReport('lz')"         :disabled="frLoading" style="--fr-color:#d97706">🚁 LZ Active</button>
+                            <button class="fr-incident-btn" @click="submitFRReport('blocked-tree')" :disabled="frLoading" style="--fr-color:#dc2626">🌲 Tree Down</button>
+                            <button class="fr-incident-btn" @click="submitFRReport('blocked-power')" :disabled="frLoading" style="--fr-color:#f59e0b">⚡ Power Line</button>
+                            <button class="fr-incident-btn" @click="submitFRReport('snow')"       :disabled="frLoading" style="--fr-color:#60a5fa">❄️ Snow</button>
+                            <button class="fr-incident-btn" @click="submitFRReport('ice-patches')" :disabled="frLoading" style="--fr-color:#a78bfa">🧊 Ice</button>
+                        </div>
+                    </div>
+                    <div class="fr-report-footer">
+                        <button class="btn btn-secondary btn-small" @click="cancelFRReport" :disabled="frLoading">Cancel</button>
+                        <span v-if="frLoading" style="font-size:0.8125rem;color:var(--color-text-soft)">Submitting…</span>
+                    </div>
+                </div>
+
+                <!-- FR Report floating button — only visible to first_responders and admins -->
+                <button class="btn-fr-report" v-if="isFR && !frMode && !selectionMode && !locationPickMode" @click="startFRReport">
+                    ⚡ FR Report
+                </button>
+
             </div>
 
             <!-- Mobile Bottom Sheet for Report -->
@@ -466,6 +515,9 @@
                             ></div>
                             <div class="report-location">{{ mobileSheetReport.road_name }}</div>
                             <div class="report-time">{{ formatTime(mobileSheetReport.timestamp) }}</div>
+                        </div>
+                        <div v-if="mobileSheetReport.confirmed" style="margin-bottom:0.375rem">
+                            <span class="badge-confirmed" title="Confirmed by first responder">✓ Confirmed</span>
                         </div>
                         <div class="report-segment" v-if="mobileSheetReport.segment_description && mobileSheetReport.segment_description !== 'All visible segments'">
                             {{ mobileSheetReport.segment_description }}
@@ -554,6 +606,7 @@
                                         <div class="report-segment">
                                             {{ report.segment_description && report.segment_description !== 'All visible segments' ? report.segment_description : 'All segments' }}
                                         </div>
+                                        <span v-if="report.confirmed" class="badge-confirmed" title="Confirmed by first responder">✓ Confirmed</span>
                                     </div>
                                     <div class="report-notes" v-if="report.notes">
                                         <template v-for="(part, i) in parseNotesParts(report.notes)" :key="i">
@@ -1082,6 +1135,6 @@
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 
     <!-- Application Script -->
-    <script src="js/app.js?v=20260307-v4"></script>
+    <script src="js/app.js?v=20260310-v5"></script>
 </body>
 </html>

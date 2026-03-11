@@ -27,7 +27,10 @@
                         { value: 'snow', label: 'Snow Covered', color: '#60a5fa' },
                         { value: 'ice-patches', label: 'Icy', color: '#a78bfa' },
                         { value: 'blocked-tree', label: 'Blocked - Tree', color: '#dc2626' },
-                        { value: 'blocked-power', label: 'Blocked - Power Line', color: '#f59e0b' }
+                        { value: 'blocked-power', label: 'Blocked - Power Line', color: '#f59e0b' },
+                        { value: 'accident', label: 'Accident', color: '#dc2626' },
+                        { value: 'road-closure', label: 'Road Closure', color: '#7c3aed' },
+                        { value: 'lz', label: 'Helicopter LZ', color: '#f59e0b' }
                     ],
                     showReportModal: false,
                     selectedSegments: [],
@@ -88,7 +91,12 @@
                     lastChangeId: 0, // Tracks SSE delta position
                     toasts: [], // Active foreground toast notifications
                     areaConfig: null, // Loaded from /area-config.json at startup
-                    rebuildMeta: null  // Loaded from /api.php?action=get_metadata at startup
+                    rebuildMeta: null, // Loaded from /api.php?action=get_metadata at startup
+                    // First Responder quick-report mode
+                    frMode: false,      // crosshair mode active
+                    frRoad: null,       // road selected in FR mode
+                    frNotes: '',        // optional notes for FR report
+                    frLoading: false    // submission in progress
                 }
             },
             computed: {
@@ -168,13 +176,17 @@
                 
                 unreportedSearchResults() {
                     if (this.searchQuery.length < 2) return [];
-                    
+
                     const query = this.searchQuery.toLowerCase();
                     const reportedRoadNames = new Set(this.reports.map(r => r.road_name));
-                    
-                    return this.searchResults.filter(road => 
+
+                    return this.searchResults.filter(road =>
                         !reportedRoadNames.has(road.name)
                     ).slice(0, 5); // Limit to 5 unreported roads
+                },
+
+                isFR() {
+                    return this.authUser && ['first_responder', 'admin'].includes(this.authUser.role);
                 }
             },
             async mounted() {
@@ -714,6 +726,24 @@
                             return;
                         }
 
+                        // FR quick-report mode: intercept click to set the road
+                        if (this.frMode && this.isFR) {
+                            if (e.features && e.features.length > 0) {
+                                const feature = e.features[0];
+                                const road = this.allRoads.find(r => r.id == feature.properties.id);
+                                if (road) {
+                                    this.frRoad = road;
+                                    this.frNotes = '';
+                                    // Focus the notes field after render
+                                    this.$nextTick(() => {
+                                        const el = document.getElementById('fr-notes');
+                                        if (el) el.focus();
+                                    });
+                                }
+                            }
+                            return;
+                        }
+
                         // Check if clicking on a report segment layer (don't start submission if so)
                         // Query an area around the click point for better detection
                         // Use larger area on mobile for touch accuracy
@@ -814,6 +844,15 @@
                             18, 8
                         ];
 
+                    // Confirmed reports get a wider line to stand out as official
+                    const confirmedWidthExpression = isMobile ?
+                        ['interpolate', ['linear'], ['zoom'],
+                            10, 16, 13, 26, 16, 38, 18, 50
+                        ] :
+                        ['interpolate', ['linear'], ['zoom'],
+                            10, 4, 13, 6, 16, 9, 18, 12
+                        ];
+
                     roadReports.forEach(report => {
                         const layerKey = `report-segment-${road.id}-${report.id}`;
 
@@ -837,14 +876,15 @@
                             });
 
                             // Add thick visible line layer - what you see is what you click
+                            // Confirmed reports are rendered wider and with full opacity
                             this.map.addLayer({
                                 id: layerKey,
                                 type: 'line',
                                 source: layerKey,
                                 paint: {
                                     'line-color': this.getStatusColor(report.status),
-                                    'line-width': lineWidthExpression,
-                                    'line-opacity': 0.9
+                                    'line-width': report.confirmed ? confirmedWidthExpression : lineWidthExpression,
+                                    'line-opacity': report.confirmed ? 1.0 : 0.9
                                 }
                             });
 
@@ -1872,6 +1912,93 @@
                     this.selectedRoad = null;
                     this.roadSegments = [];
                 },
+
+                // ── First Responder Quick Report ──────────────────────────────────────
+
+                startFRReport() {
+                    this.frMode = true;
+                    this.frRoad = null;
+                    this.frNotes = '';
+                    if (this.map) {
+                        this.map.getCanvas().style.cursor = 'crosshair';
+                    }
+                },
+
+                cancelFRReport() {
+                    this.frMode = false;
+                    this.frRoad = null;
+                    this.frNotes = '';
+                    this.frLoading = false;
+                    if (this.map) {
+                        this.map.getCanvas().style.cursor = '';
+                    }
+                },
+
+                async submitFRReport(status) {
+                    if (!this.frRoad || this.frLoading) return;
+                    this.frLoading = true;
+
+                    const road = this.frRoad;
+                    const geometry = road.geometry;
+                    const timestamp = new Date().toISOString();
+
+                    const report = {
+                        road_id: road.id,
+                        road_name: road.name || 'Unnamed Road',
+                        segment: 'entire',
+                        segment_description: 'Entire road',
+                        geometry: geometry,
+                        status: status,
+                        notes: this.frNotes.trim() || null,
+                        timestamp: timestamp
+                    };
+
+                    try {
+                        const response = await fetch('api.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'add_report', report: report })
+                        });
+                        const data = await response.json();
+
+                        if (data.success) {
+                            const newReport = data.report || { ...report, id: `report_${Date.now()}`, confirmed: 1 };
+                            this.reports.push(newReport);
+
+                            // Flash feedback on map
+                            const flashColor = this.getStatusColor(status);
+                            const layerId = `flash-${Date.now()}`;
+                            const sourceId = `flash-source-${Date.now()}`;
+                            const geojson = {
+                                type: 'Feature',
+                                geometry: { type: 'LineString', coordinates: geometry.map(c => [c[1], c[0]]) }
+                            };
+                            this.map.addSource(sourceId, { type: 'geojson', data: geojson });
+                            this.map.addLayer({ id: layerId, type: 'line', source: sourceId,
+                                paint: { 'line-color': flashColor, 'line-width': 14, 'line-opacity': 1 } });
+                            setTimeout(() => { this.map.setPaintProperty(layerId, 'line-opacity', 0.6); }, 200);
+                            setTimeout(() => { this.map.setPaintProperty(layerId, 'line-opacity', 1); }, 400);
+                            setTimeout(() => {
+                                if (this.map.getLayer(layerId)) this.map.removeLayer(layerId);
+                                if (this.map.getSource(sourceId)) this.map.removeSource(sourceId);
+                            }, 800);
+
+                            // Re-render report overlays
+                            const fullRoad = this.allRoads.find(r => r.id === road.id);
+                            if (fullRoad) this.renderReportSegments(fullRoad);
+
+                            this.cancelFRReport();
+                        } else {
+                            alert('Error submitting report: ' + (data.error || 'Unknown error'));
+                            this.frLoading = false;
+                        }
+                    } catch (err) {
+                        alert('Network error. Please try again.');
+                        this.frLoading = false;
+                    }
+                },
+
+                // ─────────────────────────────────────────────────────────────────────
 
                 openEditReport(report) {
                     this.editingReport = report;

@@ -36,6 +36,7 @@ function rowToReport($row) {
         'notes' => $row['notes'],
         'timestamp' => $row['timestamp'],
         'segmentIds' => $row['segment_ids'] ? json_decode($row['segment_ids'], true) : null,
+        'confirmed' => (int)($row['confirmed'] ?? 0),
     ];
 }
 
@@ -352,7 +353,8 @@ try {
                 throw new Exception('Missing required fields');
             }
 
-            $validStatuses = ['clear', 'snow', 'ice-patches', 'blocked-tree', 'blocked-power'];
+            $validStatuses = ['clear', 'snow', 'ice-patches', 'blocked-tree', 'blocked-power',
+                             'accident', 'road-closure', 'lz'];
             if (!in_array($report['status'], $validStatuses)) {
                 throw new Exception('Invalid status');
             }
@@ -375,11 +377,19 @@ try {
 
             $clientIp = getClientIp();
 
-            $submittedBy = getCurrentUser()['id'] ?? null;
+            $currentUser = getCurrentUser();
+            $submittedBy = $currentUser['id'] ?? null;
+
+            $roleHierarchy = ['user' => 1, 'first_responder' => 2, 'admin' => 3];
+            $confirmed = 0;
+            if ($currentUser) {
+                $role = $currentUser['role'] ?? 'user';
+                if (($roleHierarchy[$role] ?? 0) >= 2) $confirmed = 1;
+            }
 
             $stmt = $db->prepare('
-                INSERT INTO reports (id, road_id, road_name, segment, segment_description, geometry, status, notes, timestamp, segment_ids, ip, submitted_by)
-                VALUES (:id, :road_id, :road_name, :segment, :segment_description, :geometry, :status, :notes, :timestamp, :segment_ids, :ip, :submitted_by)
+                INSERT INTO reports (id, road_id, road_name, segment, segment_description, geometry, status, notes, timestamp, segment_ids, ip, submitted_by, confirmed)
+                VALUES (:id, :road_id, :road_name, :segment, :segment_description, :geometry, :status, :notes, :timestamp, :segment_ids, :ip, :submitted_by, :confirmed)
             ');
             $stmt->execute([
                 ':id' => $reportId,
@@ -394,6 +404,7 @@ try {
                 ':segment_ids' => isset($report['segmentIds']) ? json_encode($report['segmentIds']) : null,
                 ':ip' => $clientIp,
                 ':submitted_by' => $submittedBy,
+                ':confirmed' => $confirmed,
             ]);
 
             // Triggers on reports table auto-insert into report_changes
@@ -408,6 +419,7 @@ try {
             // Return the report as the frontend expects it
             $report['id'] = $reportId;
             $report['timestamp'] = $timestamp;
+            $report['confirmed'] = $confirmed;
 
             echo json_encode([
                 'success' => true,
@@ -459,7 +471,8 @@ try {
             }
 
             // Validate new status if provided
-            $validStatuses = ['clear', 'snow', 'ice-patches', 'blocked-tree', 'blocked-power'];
+            $validStatuses = ['clear', 'snow', 'ice-patches', 'blocked-tree', 'blocked-power',
+                             'accident', 'road-closure', 'lz'];
             $newStatus = $postData['status'] ?? $existingReport['status'];
             if (!in_array($newStatus, $validStatuses)) {
                 throw new Exception('Invalid status');

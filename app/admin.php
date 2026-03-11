@@ -38,7 +38,8 @@ try {
 
 // ── Actions ───────────────────────────────────────────────────────────────
 
-$valid_statuses = ['clear', 'snow', 'ice', 'blocked_tree', 'blocked_power'];
+$valid_statuses = ['clear', 'snow', 'ice-patches', 'blocked-tree', 'blocked-power',
+                  'accident', 'road-closure', 'lz'];
 $action         = $_POST['action'] ?? '';
 $redirect_tab   = 'reports';
 
@@ -131,16 +132,22 @@ if (file_exists($merge_issues_file) && ($fh = fopen($merge_issues_file, 'r')) !=
 $status_labels = [
     'clear'         => 'Clear',
     'snow'          => 'Snow Covered',
-    'ice'           => 'Icy',
-    'blocked_tree'  => 'Blocked — Tree',
-    'blocked_power' => 'Blocked — Power Line',
+    'ice-patches'   => 'Icy',
+    'blocked-tree'  => 'Blocked — Tree',
+    'blocked-power' => 'Blocked — Power Line',
+    'accident'      => 'Accident',
+    'road-closure'  => 'Road Closure',
+    'lz'            => 'Helicopter LZ',
 ];
 $status_colors = [
     'clear'         => '#10b981',
     'snow'          => '#60a5fa',
-    'ice'           => '#a78bfa',
-    'blocked_tree'  => '#dc2626',
-    'blocked_power' => '#f59e0b',
+    'ice-patches'   => '#a78bfa',
+    'blocked-tree'  => '#dc2626',
+    'blocked-power' => '#f59e0b',
+    'accident'      => '#dc2626',
+    'road-closure'  => '#7c3aed',
+    'lz'            => '#f59e0b',
 ];
 
 // Is this report still within the 3-day public window?
@@ -294,6 +301,14 @@ function is_active(string $ts): bool {
             font-size: 0.75rem;
             background: #f3f4f6;
             color: #9ca3af;
+            padding: 0.1rem 0.5rem;
+            border-radius: 4px;
+        }
+        .confirmed-tag {
+            font-size: 0.75rem;
+            background: #d1fae5;
+            color: #059669;
+            font-weight: 700;
             padding: 0.1rem 0.5rem;
             border-radius: 4px;
         }
@@ -580,6 +595,7 @@ function is_active(string $ts): bool {
                         <div class="report-body">
                             <div class="report-segment">
                                 <?= h($label) ?>
+                                <?php if (!empty($r['confirmed'])): ?><span class="confirmed-tag">✓ Confirmed</span><?php endif; ?>
                                 <?php if (!$active): ?><span class="expired-tag">expired</span><?php endif; ?>
                             </div>
                             <?php if (!empty($r['segment_description']) && $r['segment_description'] !== 'All visible segments'): ?>
